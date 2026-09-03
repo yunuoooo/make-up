@@ -1,10 +1,11 @@
 import { searchXhsEvidence } from "@/lib/adapters/xhs";
 import { hydrateTaobaoOffers } from "@/lib/adapters/taobao";
 import { decomposeLook, matchOwnedProducts, recommendSkuCandidates } from "@/lib/agent/recommendation";
+import { buildSearchPlan } from "@/lib/agent/search-plan";
 import { appendToolRuns } from "@/lib/storage/tool-runs";
 import { listUserProducts } from "@/lib/storage/user-products";
 import { makeId } from "@/lib/storage/json-store";
-import type { AgentAnswer, ChatRequest, ToolRun } from "@/lib/types/domain";
+import type { AgentAnswer, ChatRequest, LookFeatureSet, SearchPlan, ToolRun } from "@/lib/types/domain";
 
 function classifyTask(message: string): string {
   if (/我有|手里|已有|妆匣|替代|不用买/.test(message)) return "owned_product_match";
@@ -36,14 +37,41 @@ function makeRun(
   };
 }
 
+function emptyLookFeatures(): LookFeatureSet {
+  return {
+    overallStyle: "待确认的妆容目标",
+    base: [],
+    eyes: [],
+    brows: [],
+    cheeks: [],
+    lips: [],
+    colors: [],
+    texture: [],
+    focus: [],
+    neededCapabilities: [],
+    difficulty: [],
+    uncertainty: ["目标信息不足，继续推荐会变成泛导购。"]
+  };
+}
+
+function composeClarificationAnswer(searchPlan: SearchPlan): string {
+  return [
+    searchPlan.clarificationQuestion ?? "我需要先确认你的妆容目标。",
+    "",
+    "我会按你补充的具体诉求去找：小红书负责找妆容特点和常见产品路径，淘宝负责找 SKU 的价格、渠道和购买入口。"
+  ].join("\n");
+}
+
 function composeAnswer(answer: Omit<AgentAnswer, "answerText">): string {
-  const { lookFeatures, skuCandidates, ownedProductMatch, sources } = answer;
+  const { lookFeatures, skuCandidates, ownedProductMatch, sources, searchPlan } = answer;
   const topSkus = skuCandidates.slice(0, 5);
   const required = lookFeatures.neededCapabilities.filter((capability) => capability.priority === "necessary");
   const missing = ownedProductMatch.missingCapabilities;
 
   const lines = [
     `我先按「${lookFeatures.overallStyle}」来拆。`,
+    "",
+    `本轮检索：小红书搜「${searchPlan.xhsQuery}」；淘宝按「${searchPlan.taobaoQueries.slice(0, 2).join(" / ")}」继续核 SKU。`,
     "",
     "来源共同点：不要照搬单个博主清单；小红书资料和种子规则会先抽象品类能力，再落到 SKU。",
     "",
@@ -64,7 +92,7 @@ function composeAnswer(answer: Omit<AgentAnswer, "answerText">): string {
     ...topSkus.map((sku) => {
       const offer = sku.offerStatus === "live" && sku.purchaseUrl
         ? `${sku.price} · ${sku.channel} · ${sku.purchaseUrl}`
-        : "价格/渠道/购买链接待淘宝 API 接入";
+        : `${sku.price ?? "价格待淘宝 API 接入"} · ${sku.channel ?? "淘宝搜索占位"} · ${sku.purchaseUrl ?? "购买链接待淘宝 API 接入"}`;
       return `- ${sku.brand} ${sku.name}${sku.shade ? `（${sku.shade}）` : ""}：${sku.reason}；${offer}`;
     }),
     "",
@@ -86,15 +114,56 @@ export async function runLooktraceAgent(request: ChatRequest): Promise<AgentAnsw
   const toolRuns: ToolRun[] = [];
 
   const taskType = classifyTask(request.message);
+  const searchPlan = buildSearchPlan(request.message);
 
   let start = Date.now();
-  const { sources, evidence } = await searchXhsEvidence(request.message, conversationId);
+  toolRuns.push(makeRun(
+    conversationId,
+    messageId,
+    userId,
+    "intent_search_planning",
+    request.message,
+    searchPlan.isClearEnough
+      ? `小红书「${searchPlan.xhsQuery}」；淘宝「${searchPlan.taobaoQueries.join(" / ")}」`
+      : "目标不够明确，先追问一个关键妆容目标",
+    start
+  ));
+
+  if (!searchPlan.isClearEnough) {
+    const answer: AgentAnswer = {
+      id: makeId("ans"),
+      conversationId,
+      messageId,
+      userId,
+      taskType: "clarification",
+      answerText: composeClarificationAnswer(searchPlan),
+      lookFeatures: emptyLookFeatures(),
+      searchPlan,
+      sources: [],
+      evidence: [],
+      skuCandidates: [],
+      ownedProductMatch: {
+        reviewed: false,
+        usableItems: [],
+        partialMatches: [],
+        notSuitable: [],
+        missingCapabilities: [],
+        riskNotes: searchPlan.assumptions
+      },
+      toolRuns
+    };
+    await appendToolRuns(toolRuns);
+    return answer;
+  }
+
+  start = Date.now();
+  const { sources, evidence } = await searchXhsEvidence(searchPlan.xhsQuery, conversationId);
   toolRuns.push(makeRun(
     conversationId,
     messageId,
     userId,
     "xhs_evidence_review",
-    request.message,
+    `按用户诉求检索：${searchPlan.xhsQuery}`,
     `读取 ${sources.length} 条来源，抽取 ${evidence.flatMap((item) => item.skuMentions).length} 个 SKU 提及`,
     start
   ));
@@ -130,8 +199,8 @@ export async function runLooktraceAgent(request: ChatRequest): Promise<AgentAnsw
     messageId,
     userId,
     "taobao_offer_hydration",
-    `${candidates.length} 个 SKU`,
-    process.env.TAOBAO_API_KEY ? "已请求淘宝 API" : "淘宝 API 未配置，返回占位状态",
+    `${candidates.length} 个 SKU；诉求词：${searchPlan.taobaoQueries.join(" / ")}`,
+    process.env.TAOBAO_API_KEY ? "已请求淘宝 API" : "淘宝 API 未配置，返回淘宝搜索占位链接",
     start
   ));
 
@@ -155,6 +224,7 @@ export async function runLooktraceAgent(request: ChatRequest): Promise<AgentAnsw
     userId,
     taskType,
     lookFeatures,
+    searchPlan,
     sources,
     evidence,
     skuCandidates: hydratedCandidates,

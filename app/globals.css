@@ -299,7 +299,8 @@ select:focus {
 .primary-button,
 .secondary-button,
 .ghost-button,
-.candidate-footer button {
+.candidate-footer button,
+.link-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -401,6 +402,33 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+}
+
+.search-plan {
+  display: grid;
+  gap: 10px;
+}
+
+.search-plan div {
+  min-height: 58px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefb;
+}
+
+.search-plan span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--rose);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.search-plan p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .metric {
@@ -525,6 +553,21 @@ select:focus {
   border: 1px solid rgba(95, 127, 101, 0.35);
   background: var(--sage-soft);
   color: #2f5537;
+}
+
+.candidate-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.link-button {
+  border: 1px solid rgba(184, 91, 115, 0.28);
+  background: var(--rose-soft);
+  color: #793447;
+  text-decoration: none;
 }
 
 .tool-log {
@@ -704,7 +747,12 @@ select:focus {
 
   .composer .primary-button,
   .header-status,
-  .candidate-footer button {
+  .candidate-footer button,
+  .link-button {
+    width: 100%;
+  }
+
+  .candidate-actions {
     width: 100%;
   }
 }

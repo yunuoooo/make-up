@@ -88,6 +88,15 @@ export type SkuCandidate = {
   offerStatus: "live" | "placeholder";
 };
 
+export type SearchPlan = {
+  isClearEnough: boolean;
+  intentSummary: string;
+  xhsQuery: string;
+  taobaoQueries: string[];
+  clarificationQuestion?: string;
+  assumptions: string[];
+};
+
 export type OwnedProductMatch = {
   reviewed: boolean;
   usableItems: UserProduct[];
@@ -119,6 +128,7 @@ export type AgentAnswer = {
   taskType: string;
   answerText: string;
   lookFeatures: LookFeatureSet;
+  searchPlan: SearchPlan;
   sources: SourceItem[];
   evidence: EvidenceItem[];
   skuCandidates: SkuCandidate[];

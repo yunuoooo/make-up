@@ -86,7 +86,8 @@ export async function searchXhsEvidence(query: string, conversationId: string): 
       summary: preset.summary,
       metadata: {
         mode: process.env.XHS_SOURCE_MODE || "mock",
-        conversationId
+        conversationId,
+        queryStrategy: "intent_specific"
       },
       createdAt: now
     },

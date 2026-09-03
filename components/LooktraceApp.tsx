@@ -378,6 +378,27 @@ export function LooktraceApp() {
           <div className="result-scroll">
             <section className="pane-block">
               <div className="block-title">
+                <Search size={17} />
+                <h3>本轮检索</h3>
+              </div>
+              {answer?.searchPlan.isClearEnough ? (
+                <div className="search-plan">
+                  <div>
+                    <span>小红书</span>
+                    <p>{answer.searchPlan.xhsQuery}</p>
+                  </div>
+                  <div>
+                    <span>淘宝</span>
+                    <p>{answer.searchPlan.taobaoQueries.join(" / ")}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted">我会按用户当轮的具体诉求生成小红书和淘宝检索词；目标太泛时会先追问。</p>
+              )}
+            </section>
+
+            <section className="pane-block">
+              <div className="block-title">
                 <ClipboardList size={17} />
                 <h3>妆容特点</h3>
               </div>
@@ -442,17 +463,25 @@ export function LooktraceApp() {
                     <p>{candidate.reason}</p>
                     <div className="candidate-footer">
                       <span>{candidate.price ?? "待淘宝 API 接入"} · {candidate.channel ?? "渠道占位"}</span>
-                      <button
-                        type="button"
-                        title="加入妆匣表单"
-                        onClick={() => {
-                          setProductForm(candidateToForm(candidate));
-                          setEditingProductId(null);
-                        }}
-                      >
-                        <Plus size={15} />
-                        加入妆匣
-                      </button>
+                      <div className="candidate-actions">
+                        {candidate.purchaseUrl ? (
+                          <a className="link-button" href={candidate.purchaseUrl} target="_blank" rel="noreferrer">
+                            <Search size={15} />
+                            淘宝
+                          </a>
+                        ) : null}
+                        <button
+                          type="button"
+                          title="加入妆匣表单"
+                          onClick={() => {
+                            setProductForm(candidateToForm(candidate));
+                            setEditingProductId(null);
+                          }}
+                        >
+                          <Plus size={15} />
+                          加入妆匣
+                        </button>
+                      </div>
                     </div>
                   </article>
                 )) : (
@@ -479,7 +508,7 @@ export function LooktraceApp() {
               </div>
               <button className="secondary-button" type="button" onClick={runEvals} disabled={isRunningEvals}>
                 {isRunningEvals ? <Loader2 className="spin" size={16} /> : <CheckCircle2 size={16} />}
-                运行 10 条离线 eval
+                运行离线 eval
               </button>
               {evalResult ? (
                 <p className={evalResult.passed ? "eval-pass" : "eval-fail"}>
