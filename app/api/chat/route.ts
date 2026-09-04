@@ -33,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        controller.enqueue(sse("status", { message: "开始读取小红书证据层" }));
+        controller.enqueue(sse("status", { message: "开始检索互联网参考" }));
         const answer = await runLooktraceAgent({ ...body, message: body.message.trim() });
 
         for (const run of answer.toolRuns) {

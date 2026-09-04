@@ -58,7 +58,7 @@ function composeClarificationAnswer(searchPlan: SearchPlan): string {
   return [
     searchPlan.clarificationQuestion ?? "我需要先确认你的妆容目标。",
     "",
-    "我会按你补充的具体诉求去找：小红书负责找妆容特点和常见产品路径，淘宝负责找 SKU 的价格、渠道和购买入口。"
+    "我会按你补充的具体诉求去找：先参考互联网内容判断妆容特点，再用淘宝补 SKU 的价格、渠道和购买入口。"
   ].join("\n");
 }
 
@@ -71,9 +71,9 @@ function composeAnswer(answer: Omit<AgentAnswer, "answerText">): string {
   const lines = [
     `我先按「${lookFeatures.overallStyle}」来拆。`,
     "",
-    `本轮检索：小红书搜「${searchPlan.xhsQuery}」；淘宝按「${searchPlan.taobaoQueries.slice(0, 2).join(" / ")}」继续核 SKU。`,
+    `本轮检索：按「${searchPlan.intentSummary}」查互联网参考；淘宝按「${searchPlan.taobaoQueries.slice(0, 2).join(" / ")}」继续核 SKU。`,
     "",
-    "来源共同点：不要照搬单个博主清单；小红书资料和种子规则会先抽象品类能力，再落到 SKU。",
+    "参考来源于互联网；不要照搬单个博主清单，先抽象品类能力，再落到 SKU。",
     "",
     "妆容特点：",
     `- 底妆：${lookFeatures.base.join("、")}`,
@@ -92,11 +92,11 @@ function composeAnswer(answer: Omit<AgentAnswer, "answerText">): string {
     ...topSkus.map((sku) => {
       const offer = sku.offerStatus === "live" && sku.purchaseUrl
         ? `${sku.price} · ${sku.channel} · ${sku.purchaseUrl}`
-        : `${sku.price ?? "价格待淘宝 API 接入"} · ${sku.channel ?? "淘宝搜索占位"} · ${sku.purchaseUrl ?? "购买链接待淘宝 API 接入"}`;
+        : `${sku.price ?? "价格待淘宝 API 接入"} · ${sku.channel ?? "淘宝搜索占位"} · 淘宝搜索链接已生成`;
       return `- ${sku.brand} ${sku.name}${sku.shade ? `（${sku.shade}）` : ""}：${sku.reason}；${offer}`;
     }),
     "",
-    "小红书依据：",
+    "互联网参考：",
     ...sources.slice(0, 2).map((source) => `- ${source.title}：${source.summary}`),
     "",
     "边界：我可以帮你做妆容遮盖和产品选择，但这不是医疗建议；如果是持续泛红、刺痛或皮肤问题，应优先看皮肤科。",
