@@ -1,4 +1,4 @@
-import { LooktraceApp } from "@/components/LooktraceApp";
+import { LooktraceApp } from "@/frontend/components/LooktraceApp";
 
 export default function Home() {
   return <LooktraceApp />;
