@@ -168,6 +168,17 @@ const categoryReasons: Record<string, string> = {
   "卧蚕笔": "卧蚕笔增强氛围感，但应控制亮度，避免破坏低饱和。"
 };
 
+const categoryRequirements: Record<string, string> = {
+  "粉底液": "柔焦半哑光底妆",
+  "腮红": "低饱和自然气色",
+  "眉笔": "低存在感眉色",
+  "唇泥": "柔雾低饱和唇",
+  "唇釉": "同色系柔雾唇色",
+  "修容": "灰棕骨相轮廓",
+  "眼影": "低彩度眼部层次",
+  "卧蚕笔": "克制眼下提亮"
+};
+
 export function decomposeLook(message: string, sources: SourceItem[], evidence: EvidenceItem[]): LookFeatureSet {
   const allFeatures = Array.from(new Set(evidence.flatMap((item) => item.lookFeatures)));
   const allCategories = Array.from(new Set(evidence.flatMap((item) => item.categoryPatterns)));
@@ -177,7 +188,7 @@ export function decomposeLook(message: string, sources: SourceItem[], evidence: 
 
   const neededCapabilities: ProductCapability[] = allCategories.map((category, index) => ({
     category,
-    capability: categoryReasons[category] ?? `${category}需要和目标妆效的色系、质地一致。`,
+    capability: categoryRequirements[category] ?? `${category}和目标妆效一致`,
     reason: categoryReasons[category] ?? `小红书搜索结果反复提到${category}。`,
     priority: index < 2 ? "necessary" : index < 4 ? "helpful" : "optional",
     tags: allFeatures.slice(0, 5)

@@ -64,9 +64,43 @@ function composeClarificationAnswer(searchPlan: SearchPlan): string {
 
 function composeAnswer(answer: Omit<AgentAnswer, "answerText">): string {
   const { lookFeatures, skuCandidates, ownedProductMatch, sources, searchPlan } = answer;
-  const topSkus = skuCandidates.slice(0, 5);
   const required = lookFeatures.neededCapabilities.filter((capability) => capability.priority === "necessary");
   const missing = ownedProductMatch.missingCapabilities;
+  const seenSkuIds = new Set<string>();
+  const groupedSkuLines = lookFeatures.neededCapabilities.flatMap((capability) => {
+    const candidates: typeof skuCandidates = [];
+
+    for (const sku of skuCandidates) {
+      if (sku.category !== capability.category || seenSkuIds.has(sku.id)) continue;
+      candidates.push(sku);
+      seenSkuIds.add(sku.id);
+      if (candidates.length === 3) break;
+    }
+
+    if (candidates.length === 0) return [];
+
+    const priorityCopy = capability.priority === "necessary"
+      ? "必要"
+      : capability.priority === "helpful"
+        ? "建议"
+        : "可选";
+
+    return [
+      `- ${capability.category}｜${capability.capability}（${priorityCopy}）：${capability.reason}`,
+      ...candidates.map((sku) => {
+        const offer = sku.offerStatus === "live" && sku.purchaseUrl
+          ? `${sku.price} · ${sku.channel} · ${sku.purchaseUrl}`
+          : `${sku.price ?? "价格待淘宝 API 接入"} · ${sku.channel ?? "淘宝搜索占位"} · 淘宝搜索链接已生成`;
+        return `  - ${sku.brand} ${sku.name}${sku.shade ? `（${sku.shade}）` : ""}：${sku.reason}；${offer}`;
+      })
+    ];
+  });
+  const fallbackSkuLines = skuCandidates.slice(0, 5).map((sku) => {
+    const offer = sku.offerStatus === "live" && sku.purchaseUrl
+      ? `${sku.price} · ${sku.channel} · ${sku.purchaseUrl}`
+      : `${sku.price ?? "价格待淘宝 API 接入"} · ${sku.channel ?? "淘宝搜索占位"} · 淘宝搜索链接已生成`;
+    return `- ${sku.brand} ${sku.name}${sku.shade ? `（${sku.shade}）` : ""}：${sku.reason}；${offer}`;
+  });
 
   const lines = [
     `我先按「${lookFeatures.overallStyle}」来拆。`,
@@ -89,12 +123,7 @@ function composeAnswer(answer: Omit<AgentAnswer, "answerText">): string {
       : "你现在还没有录入妆匣，所以我直接按目标妆效给 SKU 候选。",
     "",
     "SKU 候选：",
-    ...topSkus.map((sku) => {
-      const offer = sku.offerStatus === "live" && sku.purchaseUrl
-        ? `${sku.price} · ${sku.channel} · ${sku.purchaseUrl}`
-        : `${sku.price ?? "价格待淘宝 API 接入"} · ${sku.channel ?? "淘宝搜索占位"} · 淘宝搜索链接已生成`;
-      return `- ${sku.brand} ${sku.name}${sku.shade ? `（${sku.shade}）` : ""}：${sku.reason}；${offer}`;
-    }),
+    ...(groupedSkuLines.length > 0 ? groupedSkuLines : fallbackSkuLines),
     "",
     "互联网参考：",
     ...sources.slice(0, 2).map((source) => `- ${source.title}：${source.summary}`),

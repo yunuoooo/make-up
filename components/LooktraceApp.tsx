@@ -16,8 +16,9 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { AgentAnswer, SkuCandidate, UserProduct } from "@/lib/types/domain";
+import type { AgentAnswer, ProductCapability, SkuCandidate, UserProduct } from "@/lib/types/domain";
 
 const userId = "local-user";
 
@@ -100,6 +101,28 @@ function candidateToForm(candidate: SkuCandidate): ProductFormState {
     effectTags: candidate.effectTags.join("、"),
     notes: candidate.reason
   };
+}
+
+function buildSkuGroups(answer: AgentAnswer): Array<{
+  capability: ProductCapability;
+  candidates: SkuCandidate[];
+}> {
+  const seenCandidateIds = new Set<string>();
+
+  return answer.lookFeatures.neededCapabilities
+    .map((capability) => {
+      const candidates = answer.skuCandidates
+        .filter((candidate) => candidate.category === capability.category)
+        .filter((candidate) => {
+          if (seenCandidateIds.has(candidate.id)) return false;
+          seenCandidateIds.add(candidate.id);
+          return true;
+        })
+        .slice(0, 3);
+
+      return { capability, candidates };
+    })
+    .filter((group) => group.candidates.length > 0);
 }
 
 export function LooktraceApp() {
@@ -349,9 +372,15 @@ export function LooktraceApp() {
             <h2>我的妆匣</h2>
             <span>一期只做手动录入，下一轮聊天会优先核对这些化妆品。</span>
           </div>
-          <button className="icon-button" type="button" title="关闭妆匣" onClick={() => setIsLibraryOpen(false)}>
-            <X size={18} />
-          </button>
+          <div className="drawer-actions">
+            <Link className="drawer-link" href="/library">
+              管理全部
+              <ExternalLink size={14} />
+            </Link>
+            <button className="icon-button" type="button" title="关闭妆匣" onClick={() => setIsLibraryOpen(false)}>
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="drawer-body">
@@ -519,6 +548,7 @@ function StructuredAnswer({
 
   const topCandidates = answer.skuCandidates.slice(0, 5);
   const missingCapabilities = answer.ownedProductMatch.missingCapabilities;
+  const skuGroups = buildSkuGroups(answer);
 
   return (
     <div className="answer-card">
@@ -569,36 +599,76 @@ function StructuredAnswer({
       <section className="answer-section">
         <div className="section-heading">
           <Sparkles size={16} />
-          <h3>SKU 候选</h3>
+          <h3>妆容要求 - SKU 候选</h3>
         </div>
-        <div className="candidate-list">
-          {topCandidates.map((candidate) => (
-            <article className="candidate-card" key={candidate.id}>
-              <div className="candidate-main">
-                <span className={`swatch ${candidate.colorFamily?.includes("粉") ? "rose" : ""}`} />
+        <div className="sku-group-list">
+          {skuGroups.length > 0 ? skuGroups.map((group) => (
+            <article className="sku-group" key={`${group.capability.category}-${group.capability.capability}`}>
+              <div className="sku-group-head">
                 <div>
-                  <strong>{candidate.brand} {candidate.name}</strong>
-                  <span>{candidate.category} · {candidate.shade ?? candidate.colorFamily ?? "按目标色系选"}</span>
+                  <span>{group.capability.category}</span>
+                  <h4>{group.capability.capability}</h4>
                 </div>
+                <strong>{group.capability.priority === "necessary" ? "必要" : group.capability.priority === "helpful" ? "建议" : "可选"}</strong>
               </div>
-              <p>{candidate.reason}</p>
-              <div className="candidate-actions">
-                {candidate.purchaseUrl ? (
-                  <a className="link-button" href={candidate.purchaseUrl} target="_blank" rel="noreferrer">
-                    <ExternalLink size={14} />
-                    淘宝
-                  </a>
-                ) : null}
-                <button type="button" onClick={() => onCandidateToLibrary(candidate)}>
-                  <Plus size={14} />
-                  妆匣
-                </button>
+              <div className="requirement-tags">
+                {group.capability.tags.slice(0, 4).map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+              </div>
+              <div className="candidate-list">
+                {group.candidates.map((candidate) => (
+                  <CandidateCard
+                    key={candidate.id}
+                    candidate={candidate}
+                    onCandidateToLibrary={onCandidateToLibrary}
+                  />
+                ))}
               </div>
             </article>
+          )) : topCandidates.map((candidate) => (
+            <CandidateCard
+              key={candidate.id}
+              candidate={candidate}
+              onCandidateToLibrary={onCandidateToLibrary}
+            />
           ))}
         </div>
       </section>
     </div>
+  );
+}
+
+function CandidateCard({
+  candidate,
+  onCandidateToLibrary
+}: {
+  candidate: SkuCandidate;
+  onCandidateToLibrary: (candidate: SkuCandidate) => void;
+}) {
+  return (
+    <article className="candidate-card">
+      <div className="candidate-main">
+        <span className={`swatch ${candidate.colorFamily?.includes("粉") ? "rose" : ""}`} />
+        <div>
+          <strong>{candidate.brand} {candidate.name}</strong>
+          <span>{candidate.category} · {candidate.shade ?? candidate.colorFamily ?? "按目标色系选"}</span>
+        </div>
+      </div>
+      <p>{candidate.reason}</p>
+      <div className="candidate-actions">
+        {candidate.purchaseUrl ? (
+          <a className="link-button" href={candidate.purchaseUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={14} />
+            淘宝
+          </a>
+        ) : null}
+        <button type="button" onClick={() => onCandidateToLibrary(candidate)}>
+          <Plus size={14} />
+          妆匣
+        </button>
+      </div>
+    </article>
   );
 }
 
