@@ -4,6 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "test": "node --experimental-strip-types --test 'test/**/*.test.ts'",
+    "test:l1": "node --experimental-strip-types --test 'test/L1/**/*.test.ts'",
+    "test:l3": "RUN_L3_E2E=1 node --experimental-strip-types --test 'test/L3/**/*.test.ts'",
+    "test:python": "python3 -m unittest agent_service.test_runtime",
+    "agent:dev": "python3 -m uvicorn agent_service.main:app --host 127.0.0.1 --port 8000",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"

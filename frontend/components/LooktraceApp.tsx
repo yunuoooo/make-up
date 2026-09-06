@@ -17,12 +17,9 @@ export function LooktraceApp() {
 
   const statusCopy = useMemo(() => {
     if (chat.isSending) return "正在检索和整理";
-    if (chat.latestAnswer?.ownedProductMatch.reviewed) {
-      return `已核对 ${beautyKit.products.length} 个妆匣产品`;
-    }
     if (chat.latestAnswer) return "已生成本轮建议";
     return "等待文字目标";
-  }, [beautyKit.products.length, chat.isSending, chat.latestAnswer]);
+  }, [chat.isSending, chat.latestAnswer]);
 
   function addCandidateToLibrary(candidate: SkuCandidate) {
     beautyKit.fillFromCandidate(candidate);

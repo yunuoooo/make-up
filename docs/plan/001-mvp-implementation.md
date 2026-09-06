@@ -14,7 +14,7 @@ Related spec: [001-mvp.md](../specs/001-mvp.md)、[09-04-agent-runtime-and-obser
 
 ## 1. 实施前确认
 
-- [ ] 锁定 `@openai/agents` 的版本、模型和运行 API。
+- [ ] 锁定 Python `openai-agents` 的版本、模型和运行 API。
 - [ ] 确认 OpenAI Agents SDK 是否支持服务端 TypeScript/Node 运行、流式事件、自定义工具、guardrails、usage 和取消运行。
 - [ ] 确认 Codex 的调用方式、模型名、结构化输出能力和 token usage 字段。
 - [ ] 创建 Langfuse project，确定 Cloud 或 self-host 方案。

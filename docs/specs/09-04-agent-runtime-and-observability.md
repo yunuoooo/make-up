@@ -10,7 +10,7 @@ Related spec: [001-mvp.md](./001-mvp.md)
 
 本文不替代 `001-mvp.md`，不规定数据库 migration 或任务排期；但锁定 Agent runtime 的嵌入边界、事件契约和应用层职责。具体实施步骤放在 `docs/plan/`。
 
-本文中的“OpenAI Agent Runtime”采用 OpenAI Agents SDK 的 TypeScript 服务端 SDK（包名暂按 `@openai/agents`，具体版本和 API 以 runtime spike 锁定）。SDK 负责 Agent loop、OpenAI 模型调用、工具调用、guardrails、handoffs（如后续需要）和事件流能力。SDK 只在 Web 服务端运行，不向浏览器暴露模型凭据或 Agent 实例。
+本文中的“OpenAI Agent Runtime”采用 OpenAI Agents SDK 的 Python 服务端 SDK（包名 `openai-agents`）。Next.js 只负责请求校验和 SSE 代理；Python SDK 负责 Agent loop、模型调用、工具调用、guardrails、handoffs（如后续需要）和运行保护。SDK 只在服务端运行，不向浏览器暴露模型凭据或 Agent 实例。
 
 ## 1. 决策摘要
 
@@ -126,9 +126,8 @@ OpenAI Agent Runtime 不负责妆容语义、用户授权、业务数据、来�
 
 ```text
 app/api/chat/route.ts          HTTP/SSE 传输层
-lib/agent/openai-runner.ts     创建 Agent、上下文和运行保护
-lib/agent/openai-tools.ts      妆迹自定义工具及参数 schema
-lib/observability/langfuse.ts  trace/span/generation 适配
+agent_service/runtime.py       创建 Agent、上下文和运行保护
+agent_service/observability.py trace/span/generation 适配
 .agent/SYSTEM.md               妆迹 Agent 系统规则
 ```
 
@@ -201,7 +200,7 @@ MVP 必须具备基础保护：
 - 运行失败时前端能收到明确状态，不显示内部堆栈。
 - Agent 结束时必须有成功、澄清、降级或失败中的一种最终状态。
 
-SDK 的 Agent loop 会持续运行到没有新的工具调用；业务级最大 turn/工具次数必须由 `openai-runner` 通过 run 配置、事件计数或 abort signal 实现，不能假设 SDK 会自动理解妆迹的成本预算。
+SDK 的 Agent loop 会持续运行到没有新的工具调用；业务级最大 turn/工具次数由 Python runtime 通过 `Runner.run` 配置、事件计数或取消信号实现，不能假设 SDK 会自动理解妆迹的成本预算。
 
 ## 6. 可观测性规范
 
@@ -291,7 +290,7 @@ Langfuse 中不得保存：
 
 - 人工 review 通过本规范的决策项。
 - OpenAI Agents SDK 的具体包、版本、运行方式和许可风险已确认。
-- 采用 `@openai/agents` 服务端 SDK；具体版本、Node 要求和 API 以 runtime spike 为准。
+- 采用 Python `openai-agents` 服务端 SDK；具体版本、Python 要求和 API 以 runtime spike 为准。
 - 已确认生产请求直接使用 SDK runner，不在 API 请求中启动 CLI 子进程。
 - 小红书、淘宝、OpenAI、Langfuse 的外部依赖状态有明确负责人和可行降级方案。
 - 没有会阻塞 MVP 主链路的未解决权限或凭据问题。
@@ -303,6 +302,8 @@ Langfuse 中不得保存：
 - 不因为框架自带能力而扩大 MVP 范围。
 
 ### 阶段 1：Agent runtime 最小闭环
+
+详细执行规范：[09-05-phase-1-agent-runtime.md](./09-05-phase-1-agent-runtime.md)
 
 本阶段验证 OpenAI Agents SDK 能在服务端运行一个最小自主 Agent：模型可以选择 mock 工具，读取工具结果，继续调用或结束，并把过程流式传递给客户端。
 
@@ -488,7 +489,7 @@ Agent SDK、Hermes 或 OpenClaw 可能自带超出 MVP 的能力，容易把实�
 
 ### 9.2 OpenAI Agents SDK 选型
 
-- 实际采用哪个 OpenAI Agents SDK 包、版本和模型？当前决策为 TypeScript 包 `@openai/agents`，版本待 runtime spike 锁定。
+- 实际采用哪个 OpenAI Agents SDK 包、版本和模型？当前决策为 Python 包 `openai-agents`，版本和模型由 `agent_service/requirements.txt` 与环境变量锁定。
 - 该版本是否允许作为 Next.js 服务端库嵌入，并支持 streaming、自定义工具、guardrails、usage 和取消运行？待 runtime spike 确认。
 - SDK 的 tracing 是否能提供所需的模型/工具事件；与 Langfuse 的适配边界是什么？待确认。
 - 如果 SDK 不满足服务端事件或运行保护要求，是否接受保留一个自建最小 runner？
@@ -521,7 +522,7 @@ Agent SDK、Hermes 或 OpenClaw 可能自带超出 MVP 的能力，容易把实�
 评审完成后应在此记录：
 
 - 决策结果：修改后通过，待完成 runtime spike 和外部依赖确认。
-- 采用的 SDK 和版本：TypeScript `@openai/agents`；版本、模型和 API 以 runtime spike 为准。
+- 采用的 SDK 和版本：Python `openai-agents`；版本、模型和 API 以 runtime spike 为准。
 - Langfuse 部署和数据策略：待确认。
 - 小红书账号池授权和降级策略：待确认。
 - 淘宝 API 能力和占位策略：待确认。

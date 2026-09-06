@@ -1,67 +1,47 @@
-import { runLooktraceAgent } from "@/lib/agent/pipeline";
-import type { ChatRequest } from "@/lib/types/domain";
-
 export const runtime = "nodejs";
 
-const encoder = new TextEncoder();
-
-function sse(event: string, data: unknown): Uint8Array {
-  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
-function chunkText(text: string, size = 48): string[] {
-  const chunks: string[] = [];
-  for (let index = 0; index < text.length; index += size) {
-    chunks.push(text.slice(index, index + size));
-  }
-  return chunks;
+function resolveAgentServiceUrl(): string {
+  const baseUrl = (process.env.AGENT_SERVICE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+  return `${baseUrl}/api/chat`;
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let body: ChatRequest;
-
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: "请求体不是有效 JSON。" }, { status: 400 });
   }
 
-  if (!body.message?.trim()) {
-    return Response.json({ error: "请输入一个文字妆容目标。" }, { status: 400 });
+  if (!body || typeof body !== "object" || typeof (body as { message?: unknown }).message !== "string" || !(body as { message: string }).message.trim()) {
+    return Response.json({ error: "请输入有效的消息。" }, { status: 400 });
   }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        controller.enqueue(sse("status", { message: "开始检索互联网参考" }));
-        const answer = await runLooktraceAgent({ ...body, message: body.message.trim() });
+  try {
+    const userId = process.env.LOOKTRACE_USER_ID ?? "local-user";
+    const upstream = await fetch(resolveAgentServiceUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream", "x-user-id": userId },
+      body: JSON.stringify(body),
+      signal: request.signal
+    });
 
-        for (const run of answer.toolRuns) {
-          controller.enqueue(sse("tool", run));
-        }
+    if (!upstream.ok) {
+      const contentType = upstream.headers.get("content-type") ?? "application/json";
+      return new Response(await upstream.text(), { status: upstream.status, headers: { "Content-Type": contentType } });
+    }
+    if (!upstream.body) return Response.json({ error: "Agent 服务没有返回流式结果。" }, { status: 502 });
 
-        for (const chunk of chunkText(answer.answerText)) {
-          controller.enqueue(sse("chunk", { text: chunk }));
-          await new Promise((resolve) => setTimeout(resolve, 18));
-        }
-
-        controller.enqueue(sse("result", answer));
-        controller.close();
-      } catch (error) {
-        controller.enqueue(sse("error", {
-          message: error instanceof Error ? error.message : "生成推荐时发生未知错误。"
-        }));
-        controller.close();
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "X-Accel-Buffering": "no"
       }
-    }
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      "Connection": "keep-alive",
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "X-Accel-Buffering": "no"
-    }
-  });
+    });
+  } catch {
+    return Response.json({ error: "Agent 服务暂时不可用，请先启动 Python runtime。" }, { status: 503 });
+  }
 }

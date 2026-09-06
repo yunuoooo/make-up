@@ -4,6 +4,13 @@
 !.env.example
 .next/
 node_modules/
+.venv/
+.venv-*/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
 .local-data/
 .tmp/
 tsconfig.tsbuildinfo

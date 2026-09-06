@@ -267,6 +267,13 @@ p {
   white-space: pre-wrap;
 }
 
+.runtime-meta {
+  margin: 10px 0 0;
+  color: var(--muted, #777);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
 .chat-turn.user .message-text {
   background: var(--ink);
   color: var(--surface);
