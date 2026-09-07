@@ -19,6 +19,12 @@
 
 当前实现调用 `taobao.tbk.dg.material.optional`。如果缺少 key、secret 或 adzone id，系统会继续返回淘宝搜索占位链接，不假装拿到实时价格。
 
+## Vercel 临时存储
+
+当前 MVP 的妆匣和工具运行日志仍是演示级 JSON 存储。本机默认写入 `.local-data`；Vercel 的运行目录不可写，因此会自动写到 `/tmp/looktrace-local-data`。
+
+这只能保证接口不报错，不适合作为长期用户数据存储。真实用户版本应接 Supabase、Neon、Vercel Postgres 或其他数据库。
+
 ## 小红书来源模式
 
 `XHS_SOURCE_MODE` 支持：
