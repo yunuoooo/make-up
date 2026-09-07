@@ -21,7 +21,7 @@ export type UserProduct = {
 
 export type SourceItem = {
   id: string;
-  sourceType: "xhs_account_search" | "xhs_note" | "pasted_text" | "manual_seed";
+  sourceType: "xhs_account_search" | "xhs_local_browser" | "xhs_official_api" | "xhs_note" | "pasted_text" | "manual_seed";
   sourceUrl?: string;
   searchQuery: string;
   xhsAccountId?: string;

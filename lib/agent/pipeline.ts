@@ -1,5 +1,5 @@
 import { searchXhsEvidence } from "@/lib/adapters/xhs";
-import { hydrateTaobaoOffers } from "@/lib/adapters/taobao";
+import { getTaobaoAdapterStatus, hydrateTaobaoOffers } from "@/lib/adapters/taobao";
 import { decomposeLook, matchOwnedProducts, recommendSkuCandidates } from "@/lib/agent/recommendation";
 import { buildSearchPlan } from "@/lib/agent/search-plan";
 import { appendToolRuns } from "@/lib/storage/tool-runs";
@@ -223,13 +223,14 @@ export async function runLooktraceAgent(request: ChatRequest): Promise<AgentAnsw
 
   start = Date.now();
   const hydratedCandidates = await hydrateTaobaoOffers(candidates);
+  const taobaoStatus = getTaobaoAdapterStatus();
   toolRuns.push(makeRun(
     conversationId,
     messageId,
     userId,
     "taobao_offer_hydration",
     `${candidates.length} 个 SKU；诉求词：${searchPlan.taobaoQueries.join(" / ")}`,
-    process.env.TAOBAO_API_KEY ? "已请求淘宝 API" : "淘宝 API 未配置，返回淘宝搜索占位链接",
+    taobaoStatus.reason,
     start
   ));
 

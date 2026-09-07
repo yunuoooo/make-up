@@ -1,5 +1,6 @@
 import { makeId } from "@/lib/storage/json-store";
 import type { EvidenceItem, SourceItem } from "@/lib/types/domain";
+import { searchXhsWithLocalBrowser } from "@/lib/adapters/xhs-local-browser";
 
 type XhsPreset = {
   keywords: string[];
@@ -8,6 +9,22 @@ type XhsPreset = {
   features: string[];
   skus: string[];
   categories: string[];
+};
+
+type XhsSearchResult = {
+  sources: SourceItem[];
+  evidence: EvidenceItem[];
+};
+
+type OfficialSourcePayload = {
+  title?: string;
+  author?: string;
+  sourceUrl?: string;
+  rawText?: string;
+  summary?: string;
+  lookFeatures?: string[];
+  skuMentions?: string[];
+  categoryPatterns?: string[];
 };
 
 const presets: XhsPreset[] = [
@@ -66,10 +83,53 @@ function pickPreset(query: string): XhsPreset {
   return ranked[0]?.score > 0 ? ranked[0].preset : defaultPreset;
 }
 
-export async function searchXhsEvidence(query: string, conversationId: string): Promise<{
-  sources: SourceItem[];
-  evidence: EvidenceItem[];
-}> {
+function extractTerms(text: string, terms: string[]): string[] {
+  return terms.filter((term) => text.includes(term));
+}
+
+function extractSkuMentions(text: string, preset: XhsPreset): string[] {
+  const mentions = text.match(/[\u4e00-\u9fa5A-Za-z0-9]{2,24}(粉底液|腮红|眉笔|唇泥|唇釉|修容盘|修容|眼影盘|眼影|卧蚕笔)/g) ?? [];
+  return Array.from(new Set([...mentions.slice(0, 8), ...preset.skus]));
+}
+
+function buildSeedSource(query: string, preset: XhsPreset, now: string): SourceItem {
+  return {
+    id: makeId("src"),
+    sourceType: "manual_seed",
+    searchQuery: query,
+    title: "妆容特点到 SKU 的人工种子规则",
+    author: "LOOKTRACE seed",
+    rawText: `常见品类：${preset.categories.join("、")}；常见 SKU：${preset.skus.join("、")}`,
+    summary: "用于在账号池接入前保证文字 MVP 能稳定跑通。",
+    metadata: {
+      mode: "seed"
+    },
+    createdAt: now
+  };
+}
+
+function buildResultFromSources(query: string, conversationId: string, sources: SourceItem[], preset: XhsPreset): XhsSearchResult {
+  const allText = sources.map((source) => `${source.rawText} ${source.summary}`).join(" ");
+  const features = Array.from(new Set([...extractTerms(allText, preset.features), ...preset.features]));
+  const categories = Array.from(new Set([...extractTerms(allText, preset.categories), ...preset.categories]));
+  const skus = extractSkuMentions(allText, preset);
+  const now = new Date().toISOString();
+
+  return {
+    sources,
+    evidence: sources.map((source, index) => ({
+      id: makeId("ev"),
+      sourceItemId: source.id,
+      lookFeatures: features,
+      skuMentions: skus,
+      categoryPatterns: categories,
+      confidence: index === 0 ? 0.82 : 0.68,
+      createdAt: now
+    }))
+  };
+}
+
+function buildMockResult(query: string, conversationId: string, mode = process.env.XHS_SOURCE_MODE || "mock"): XhsSearchResult {
   const preset = pickPreset(query);
   const now = new Date().toISOString();
   const accountId = process.env.XHS_ACCOUNT_POOL_CONFIG ? "configured-pool" : "mock-account-a";
@@ -85,36 +145,142 @@ export async function searchXhsEvidence(query: string, conversationId: string): 
       rawText: preset.summary,
       summary: preset.summary,
       metadata: {
-        mode: process.env.XHS_SOURCE_MODE || "mock",
+        mode,
         conversationId,
         queryStrategy: "intent_specific"
       },
       createdAt: now
     },
-    {
-      id: makeId("src"),
-      sourceType: "manual_seed",
-      searchQuery: query,
-      title: "妆容特点到 SKU 的人工种子规则",
-      author: "LOOKTRACE seed",
-      rawText: `常见品类：${preset.categories.join("、")}；常见 SKU：${preset.skus.join("、")}`,
-      summary: "用于在账号池接入前保证文字 MVP 能稳定跑通。",
-      metadata: {
-        mode: "seed"
-      },
-      createdAt: now
-    }
+    buildSeedSource(query, preset, now)
   ];
 
-  const evidence: EvidenceItem[] = sources.map((source, index) => ({
-    id: makeId("ev"),
-    sourceItemId: source.id,
-    lookFeatures: preset.features,
-    skuMentions: preset.skus,
-    categoryPatterns: preset.categories,
-    confidence: index === 0 ? 0.82 : 0.68,
-    createdAt: now
-  }));
+  return buildResultFromSources(query, conversationId, sources, preset);
+}
 
-  return { sources, evidence };
+async function searchXhsOfficialApi(query: string, conversationId: string): Promise<XhsSearchResult> {
+  const baseUrl = process.env.XHS_OFFICIAL_API_BASE_URL?.replace(/\/$/, "");
+  const apiKey = process.env.XHS_OFFICIAL_API_KEY;
+
+  if (!baseUrl || !apiKey) {
+    return buildMockResult(query, conversationId, "official_api_not_configured");
+  }
+
+  const response = await fetch(`${baseUrl}/search`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ query, conversationId })
+  });
+
+  if (!response.ok) {
+    return buildMockResult(query, conversationId, "official_api_failed");
+  }
+
+  const payload = await response.json().catch(() => null) as {
+    sources?: OfficialSourcePayload[];
+  } | null;
+  const preset = pickPreset(query);
+  const now = new Date().toISOString();
+  const officialSources = payload?.sources?.map((source): SourceItem => ({
+    id: makeId("src"),
+    sourceType: "xhs_official_api",
+    sourceUrl: source.sourceUrl,
+    searchQuery: query,
+    title: source.title || "小红书官方 API 搜索结果",
+    author: source.author || "小红书官方 API",
+    rawText: source.rawText || source.summary || "",
+    summary: source.summary || source.rawText || "官方 API 返回了结果，但没有摘要字段。",
+    metadata: {
+      mode: "official_api",
+      conversationId,
+      queryStrategy: "intent_specific"
+    },
+    createdAt: now
+  })) ?? [];
+
+  if (officialSources.length === 0) {
+    return buildMockResult(query, conversationId, "official_api_empty");
+  }
+
+  return buildResultFromSources(query, conversationId, [
+    ...officialSources.slice(0, 3),
+    buildSeedSource(query, preset, now)
+  ], preset);
+}
+
+async function searchXhsLocalBrowser(query: string, conversationId: string): Promise<XhsSearchResult> {
+  const preset = pickPreset(query);
+  const now = new Date().toISOString();
+
+  try {
+    const result = await searchXhsWithLocalBrowser(query);
+    const browserText = [result.rawText, ...result.snippets].filter(Boolean).join("\n");
+    const summary = result.loginRequired
+      ? "本机小红书浏览器需要先登录或完成验证，已使用人工种子规则兜底。"
+      : (result.snippets[0] || result.rawText || "本机小红书搜索完成，但页面文本较少。").slice(0, 260);
+
+    const sources: SourceItem[] = [
+      {
+        id: makeId("src"),
+        sourceType: "xhs_local_browser",
+        sourceUrl: result.url,
+        searchQuery: query,
+        xhsAccountId: "local-browser-profile",
+        title: `本机小红书搜索：${query}`,
+        author: "本机已登录小红书账号",
+        rawText: browserText || summary,
+        summary,
+        metadata: {
+          mode: "local_browser",
+          conversationId,
+          queryStrategy: "intent_specific",
+          noteLinkCount: result.noteLinks.length,
+          loginRequired: result.loginRequired
+        },
+        createdAt: now
+      },
+      buildSeedSource(query, preset, now)
+    ];
+
+    return buildResultFromSources(query, conversationId, sources, preset);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "本机浏览器搜索失败";
+    const sources: SourceItem[] = [
+      {
+        id: makeId("src"),
+        sourceType: "xhs_local_browser",
+        searchQuery: query,
+        xhsAccountId: "local-browser-profile",
+        title: "本机小红书搜索未连上",
+        author: "LOOKTRACE local browser",
+        rawText: errorMessage,
+        summary: `本机小红书浏览器暂不可用：${errorMessage}。已使用人工种子规则兜底。`,
+        metadata: {
+          mode: "local_browser_failed",
+          conversationId,
+          queryStrategy: "intent_specific"
+        },
+        createdAt: now
+      },
+      buildSeedSource(query, preset, now)
+    ];
+
+    return buildResultFromSources(query, conversationId, sources, preset);
+  }
+}
+
+export async function searchXhsEvidence(query: string, conversationId: string): Promise<XhsSearchResult> {
+  const mode = process.env.XHS_SOURCE_MODE || "mock";
+
+  if (mode === "local_browser") {
+    return searchXhsLocalBrowser(query, conversationId);
+  }
+
+  if (mode === "official_api") {
+    return searchXhsOfficialApi(query, conversationId);
+  }
+
+  return buildMockResult(query, conversationId, mode);
 }
