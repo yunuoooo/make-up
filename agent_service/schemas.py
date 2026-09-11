@@ -1,6 +1,39 @@
-from typing import Any, Dict, List, Literal, Optional
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class XhsComment(BaseModel):
+    author_name: str = ""
+    text: str
+
+
+class XhsPost(BaseModel):
+    post_id: str
+    title: str = ""
+    author_name: str = ""
+    text: str = ""
+    tags: list[str] = Field(default_factory=list)
+    comments: list[XhsComment] = Field(default_factory=list)
+    source_url: str | None = None
+
+
+class XhsSearchResult(BaseModel):
+    status: Literal["succeeded", "degraded", "failed"]
+    mode: Literal["mcp", "mock"] | None = None
+    posts: list[XhsPost] = Field(default_factory=list)
+    error_code: str | None = None
+    message: str | None = None
+    detail_failure_count: int = 0
+    truncated: bool = False
+
+
+class Phase1AgentOutput(BaseModel):
+    answer_text: str
+    uncertainty: list[str] = Field(default_factory=list)
 
 
 class SourceReference(BaseModel):
@@ -10,68 +43,32 @@ class SourceReference(BaseModel):
     title: str = ""
     summary: str = ""
     status: Literal["succeeded", "degraded", "failed"] = "succeeded"
-    source_url: Optional[str] = None
-
-
-class SkuCandidate(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str
-    name: str
-    category: str
-    status: Literal["live", "placeholder", "unavailable"] = "placeholder"
-    reason: str = ""
-    price: Optional[str] = None
-    channel: Optional[str] = None
-    purchase_url: Optional[str] = None
-
-
-class OwnedProductMatch(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    reviewed: bool = False
-    usable_items: List[Dict[str, Any]] = Field(default_factory=list)
-    partial_matches: List[Dict[str, Any]] = Field(default_factory=list)
-    not_suitable: List[Dict[str, Any]] = Field(default_factory=list)
-    missing_capabilities: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-class LookFeatureSet(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    overall_style: str = "待确认的妆容目标"
-    base: List[str] = Field(default_factory=list)
-    eyes: List[str] = Field(default_factory=list)
-    brows: List[str] = Field(default_factory=list)
-    cheeks: List[str] = Field(default_factory=list)
-    lips: List[str] = Field(default_factory=list)
-    colors: List[str] = Field(default_factory=list)
-    texture: List[str] = Field(default_factory=list)
-    focus: List[str] = Field(default_factory=list)
-    uncertainty: List[str] = Field(default_factory=list)
+    source_url: str | None = None
 
 
 class AgentAnswer(BaseModel):
-    """Versioned business contract returned by the Agent, never raw model text."""
-
     model_config = ConfigDict(extra="ignore")
 
     schema_version: Literal["looktrace.answer.v1"] = "looktrace.answer.v1"
-    status: Literal["succeeded", "clarification", "degraded", "failed", "cancelled"]
+    status: Literal["succeeded", "degraded", "failed", "cancelled"]
     answer_text: str
-    clarification_question: Optional[str] = None
-    look_features: LookFeatureSet = Field(default_factory=LookFeatureSet)
-    sources: List[SourceReference] = Field(default_factory=list)
-    sku_candidates: List[SkuCandidate] = Field(default_factory=list)
-    owned_product_match: OwnedProductMatch = Field(default_factory=OwnedProductMatch)
-    uncertainty: List[str] = Field(default_factory=list)
-    tool_run_ids: List[str] = Field(default_factory=list)
+    sources: list[SourceReference] = Field(default_factory=list)
+    uncertainty: list[str] = Field(default_factory=list)
 
 
-class ToolResult(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+@dataclass
+class RunContext:
+    user_id: str
+    conversation_id: str
+    message_id: str
+    agent_run_id: str
+    trace_id: str
+    xhs_result: XhsSearchResult | None = None
 
-    status: Literal["succeeded", "degraded", "failed"]
-    code: Optional[str] = None
-    message: Optional[str] = None
-    data: Dict[str, Any] = Field(default_factory=dict)
+    def run_metadata(self) -> dict[str, str]:
+        return {
+            "traceId": self.trace_id,
+            "agentRunId": self.agent_run_id,
+            "conversationId": self.conversation_id,
+            "messageId": self.message_id,
+        }

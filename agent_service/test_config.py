@@ -2,43 +2,37 @@ import os
 import unittest
 from unittest.mock import patch
 
-from agent_service.runtime import RuntimeConfig
+from agent_service.config import AgentSettings
 
 
-class RuntimeConfigTests(unittest.TestCase):
-    def test_openai_api_key_can_be_used_for_explicit_deepseek_provider(self):
+class AgentSettingsTests(unittest.TestCase):
+    def test_default_agent_timeout_exceeds_a_real_xhs_tool_request(self):
         with patch.dict(
             os.environ,
             {
-                "AGENT_MODEL_PROVIDER": "deepseek",
-                "AGENT_MODEL_BASE_URL": "https://api.deepseek.com",
-                "AGENT_MODEL": "deepseek-chat",
-                "OPENAI_API_KEY": "deepseek-key",
-                "DEEPSEEK_API_KEY": "",
+                "AGENT_TIMEOUT_SECONDS": "",
+                "XHS_MCP_REQUEST_TIMEOUT_SECONDS": "",
+                "XHS_MCP_DETAIL_LIMIT": "",
             },
             clear=False,
         ):
-            config = RuntimeConfig.from_env()
-        self.assertEqual(config.api_key, "deepseek-key")
-        self.assertEqual(config.base_url, "https://api.deepseek.com")
-        self.assertEqual(config.model, "deepseek-chat")
+            for name in (
+                "AGENT_TIMEOUT_SECONDS",
+                "XHS_MCP_REQUEST_TIMEOUT_SECONDS",
+                "XHS_MCP_DETAIL_LIMIT",
+            ):
+                os.environ.pop(name, None)
+            settings = AgentSettings.from_env()
 
-    def test_openai_provider_does_not_reinterpret_openai_key_as_deepseek(self):
-        with patch.dict(
-            os.environ,
-            {
-                "AGENT_MODEL_PROVIDER": "openai",
-                "AGENT_MODEL_BASE_URL": "",
-                "AGENT_MODEL": "gpt-4o-mini",
-                "OPENAI_API_KEY": "openai-key",
-                "DEEPSEEK_API_KEY": "",
-            },
-            clear=False,
-        ):
-            config = RuntimeConfig.from_env()
-        self.assertEqual(config.api_key, "openai-key")
-        self.assertIsNone(config.base_url)
-        self.assertEqual(config.model, "gpt-4o-mini")
+        self.assertGreater(
+            settings.timeout_seconds,
+            settings.xhs.request_timeout_seconds,
+        )
+        self.assertGreater(
+            settings.xhs.sse_read_timeout_seconds,
+            settings.xhs.request_timeout_seconds,
+        )
+        self.assertEqual(settings.xhs.detail_limit, 2)
 
 
 if __name__ == "__main__":

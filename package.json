@@ -7,8 +7,10 @@
     "test": "node --experimental-strip-types --test 'test/**/*.test.ts'",
     "test:l1": "node --experimental-strip-types --test 'test/L1/**/*.test.ts'",
     "test:l3": "RUN_L3_E2E=1 node --experimental-strip-types --test 'test/L3/**/*.test.ts'",
-    "test:python": "python3 -m unittest agent_service.test_runtime",
-    "agent:dev": "python3 -m uvicorn agent_service.main:app --host 127.0.0.1 --port 8000",
+    "test:python": "./.venv/bin/python -m unittest discover -s agent_service -p 'test_*.py'",
+    "xhs:login": "cd .local-data/xhs-mcp && ./bin/xiaohongshu-login-darwin-arm64",
+    "xhs:mcp": "cd .local-data/xhs-mcp && ./bin/xiaohongshu-mcp-darwin-arm64 2>&1 | perl -pe 'BEGIN { $|=1 } s/([?&]xsec_token=)[^&[:space:]\\\"]+/${1}[redacted]/gi'",
+    "agent:dev": "./.venv/bin/python -m uvicorn agent_service.main:app --host 127.0.0.1 --port 8000",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"

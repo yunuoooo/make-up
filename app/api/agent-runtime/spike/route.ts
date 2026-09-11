@@ -1,1 +1,3 @@
-export { POST, runtime } from "../../chat/route";
+export const runtime = "nodejs";
+
+export { POST } from "../../chat/route";
