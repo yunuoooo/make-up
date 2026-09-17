@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT_DIR/scripts/lib/platform.sh"
+
+DATA_DIR=${XHS_DATA_DIR:-"$ROOT_DIR/.local-data/xhs-mcp"}
+PLATFORM=$(xhs_platform)
+BINARY=${XHS_LOGIN_BINARY:-"$ROOT_DIR/xiaohongshu-mcp/bin/xiaohongshu-login-$PLATFORM"}
+
+xhs_require_binary "$BINARY" "xiaohongshu login" "XHS_LOGIN_BINARY"
+
+mkdir -p "$DATA_DIR"
+export COOKIES_PATH=${COOKIES_PATH:-"$DATA_DIR/cookies.json"}
+exec "$BINARY"

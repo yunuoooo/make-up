@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT_DIR/scripts/lib/platform.sh"
+
+DATA_DIR=${XHS_DATA_DIR:-"$ROOT_DIR/.local-data/xhs-mcp"}
+PORT=${XHS_MCP_PORT:-18060}
+HEADLESS=${XHS_MCP_HEADLESS:-true}
+PLATFORM=$(xhs_platform)
+BINARY=${XHS_MCP_BINARY:-"$ROOT_DIR/xiaohongshu-mcp/bin/xiaohongshu-mcp-$PLATFORM"}
+
+xhs_require_binary "$BINARY" "xiaohongshu-mcp" "XHS_MCP_BINARY"
+
+mkdir -p "$DATA_DIR"
+export COOKIES_PATH=${COOKIES_PATH:-"$DATA_DIR/cookies.json"}
+
+if [ -n "${XHS_MCP_AUTH_TOKEN:-}" ]; then
+  export AUTH_TOKEN="$XHS_MCP_AUTH_TOKEN"
+fi
+
+exec "$BINARY" -headless="$HEADLESS" -port ":$PORT"

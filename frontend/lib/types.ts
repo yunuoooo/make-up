@@ -19,6 +19,38 @@ export type RuntimeAnswer = {
   };
 };
 
+export type RuntimeUsage = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  reasoning?: number;
+  totalTokens?: number;
+  cost?: unknown;
+};
+
+export type RuntimeToolObservation = {
+  toolCallId: string;
+  toolName: string;
+  status: "running" | "succeeded" | "failed";
+  args?: unknown;
+  resultPreview?: string;
+};
+
+export type RuntimeObservation = {
+  traceId: string;
+  agentRunId: string;
+  provider: string;
+  model: string;
+  /** pi 通过 --skill 加载的技能目录；agent 的行为来自该技能而非系统提示词。 */
+  skillPath?: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  modelCallCount: number;
+  usage: RuntimeUsage;
+  tools: RuntimeToolObservation[];
+};
+
 export function isRuntimeAnswer(value: unknown): value is RuntimeAnswer {
   if (!value || typeof value !== "object") return false;
   const answer = value as Partial<RuntimeAnswer>;
@@ -33,10 +65,23 @@ export function isRuntimeAnswer(value: unknown): value is RuntimeAnswer {
     && typeof run.messageId === "string";
 }
 
+export type RuntimeStepKind = "thinking" | "narration" | "tool";
+
+/** 一条过程记录：Pi 的思考、模型的旁白，或一次工具调用。 */
+export type RuntimeStep = {
+  id: string;
+  kind: RuntimeStepKind;
+  label: string;
+  detail?: string;
+  status: "running" | "succeeded" | "failed";
+  text?: string;
+};
+
 export type Turn = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  steps?: RuntimeStep[];
   answer?: AgentAnswer | RuntimeAnswer;
 };
 

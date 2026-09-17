@@ -1,9 +1,6 @@
 export const runtime = "nodejs";
 
-function resolveAgentServiceUrl(): string {
-  const baseUrl = (process.env.AGENT_SERVICE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
-  return `${baseUrl}/api/chat`;
-}
+import { formatSseEvent, runPiAgent } from "@/lib/pi/bridge";
 
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
@@ -17,31 +14,50 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "请输入有效的消息。" }, { status: 400 });
   }
 
-  try {
-    const userId = process.env.LOOKTRACE_USER_ID ?? "local-user";
-    const upstream = await fetch(resolveAgentServiceUrl(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream", "x-user-id": userId },
-      body: JSON.stringify(body),
-      signal: request.signal
-    });
+  const userMessage = (body as { message: string }).message.trim();
+  const requestAbort = new AbortController();
+  const forwardAbort = () => requestAbort.abort();
+  request.signal.addEventListener("abort", forwardAbort, { once: true });
+  const encoder = new TextEncoder();
 
-    if (!upstream.ok) {
-      const contentType = upstream.headers.get("content-type") ?? "application/json";
-      return new Response(await upstream.text(), { status: upstream.status, headers: { "Content-Type": contentType } });
-    }
-    if (!upstream.body) return Response.json({ error: "Agent 服务没有返回流式结果。" }, { status: 502 });
-
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "X-Accel-Buffering": "no"
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false;
+      try {
+        await runPiAgent({
+          prompt: userMessage,
+          conversationId: typeof (body as { conversationId?: unknown }).conversationId === "string"
+            ? (body as { conversationId: string }).conversationId
+            : undefined,
+          signal: requestAbort.signal
+        }, (event) => {
+          if (!closed) controller.enqueue(encoder.encode(formatSseEvent(event)));
+        });
+      } catch (error) {
+        if (!closed) {
+          controller.enqueue(encoder.encode(formatSseEvent({
+            event: "error",
+            data: { message: error instanceof Error ? error.message : "Pi runtime 失败。" }
+          })));
+        }
+      } finally {
+        closed = true;
+        request.signal.removeEventListener("abort", forwardAbort);
+        controller.close();
       }
-    });
-  } catch {
-    return Response.json({ error: "Agent 服务暂时不可用，请先启动 Python runtime。" }, { status: 503 });
-  }
+    },
+    cancel() {
+      requestAbort.abort();
+    }
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "X-Accel-Buffering": "no"
+    }
+  });
 }

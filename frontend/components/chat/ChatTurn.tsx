@@ -1,13 +1,16 @@
 import type { SkuCandidate } from "@/lib/types/domain";
 import { isRuntimeAnswer, type RuntimeAnswer, type Turn } from "@/frontend/lib/types";
+import { MarkdownMessage } from "./MarkdownMessage";
 import { StructuredAnswer } from "./StructuredAnswer";
+import { TurnTrace } from "./TurnTrace";
 
 type ChatTurnProps = {
   turn: Turn;
   onCandidateToLibrary: (candidate: SkuCandidate) => void;
+  isStreaming?: boolean;
 };
 
-export function ChatTurn({ turn, onCandidateToLibrary }: ChatTurnProps) {
+export function ChatTurn({ turn, onCandidateToLibrary, isStreaming = false }: ChatTurnProps) {
   const label = turn.role === "user" ? "你" : "妆迹";
 
   return (
@@ -15,12 +18,16 @@ export function ChatTurn({ turn, onCandidateToLibrary }: ChatTurnProps) {
       <div className="avatar" aria-hidden="true">{turn.role === "user" ? "你" : "妆"}</div>
       <div className="turn-content">
         <span className="turn-label">{label}</span>
+        {turn.steps?.length ? <TurnTrace steps={turn.steps} isStreaming={isStreaming} /> : null}
         {turn.answer && isRuntimeAnswer(turn.answer) ? (
           <RuntimeAnswerView answer={turn.answer} />
         ) : turn.answer ? (
           <StructuredAnswer answer={turn.answer} onCandidateToLibrary={onCandidateToLibrary} />
+        ) : turn.role === "assistant" ? (
+          // 过程区已经在展示进展时，不要再挂一个"正在整理"的空气泡。
+          turn.text || !turn.steps?.length ? <MarkdownMessage text={turn.text || "正在整理..."} /> : null
         ) : (
-          <p className="message-text">{turn.text || "正在整理..."}</p>
+          <p className="message-text user">{turn.text}</p>
         )}
       </div>
     </article>
@@ -39,7 +46,7 @@ function RuntimeAnswerView({ answer }: { answer: RuntimeAnswer }) {
 
   return (
     <div className="runtime-answer">
-      <p className="message-text">{answer.answerText}</p>
+      <MarkdownMessage text={answer.answerText} />
       <p className="runtime-meta" title={`traceId: ${answer.run.traceId}`}>
         {status} · run {answer.run.agentRunId}
       </p>

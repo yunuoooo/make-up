@@ -7,6 +7,7 @@ import {
   Sparkles
 } from "lucide-react";
 import type { AgentAnswer, SkuCandidate } from "@/lib/types/domain";
+import { MarkdownMessage } from "./MarkdownMessage";
 
 type StructuredAnswerProps = {
   answer: AgentAnswer;
@@ -15,7 +16,7 @@ type StructuredAnswerProps = {
 
 export function StructuredAnswer({ answer, onCandidateToLibrary }: StructuredAnswerProps) {
   if (!answer.searchPlan.isClearEnough) {
-    return <p className="message-text">{answer.answerText}</p>;
+    return <MarkdownMessage text={answer.answerText} />;
   }
 
   const topCandidates = answer.skuCandidates.slice(0, 5);

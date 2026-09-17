@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { SkuCandidate } from "@/lib/types/domain";
 import { BeautyKitDrawer } from "@/frontend/components/beauty-kit/BeautyKitDrawer";
 import { ChatTurn } from "@/frontend/components/chat/ChatTurn";
+import { RuntimeObservability } from "@/frontend/components/chat/RuntimeObservability";
 import { useBeautyKit } from "@/frontend/hooks/useBeautyKit";
 import { useChat } from "@/frontend/hooks/useChat";
 import { CURRENT_USER_ID, SAMPLE_PROMPTS } from "@/frontend/lib/constants";
@@ -66,8 +67,13 @@ export function LooktraceApp() {
             </div>
           </div>
 
-          {chat.turns.map((turn) => (
-            <ChatTurn key={turn.id} turn={turn} onCandidateToLibrary={addCandidateToLibrary} />
+          {chat.turns.map((turn, index) => (
+            <ChatTurn
+              key={turn.id}
+              turn={turn}
+              onCandidateToLibrary={addCandidateToLibrary}
+              isStreaming={chat.isSending && index === chat.turns.length - 1}
+            />
           ))}
         </div>
 
@@ -84,6 +90,8 @@ export function LooktraceApp() {
           </button>
         </form>
       </section>
+
+      <RuntimeObservability observation={chat.observation} />
 
       <button className="library-fab" type="button" onClick={() => setIsLibraryOpen(true)}>
         <PanelRightOpen size={18} />
