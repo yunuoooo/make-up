@@ -1,5 +1,0 @@
-fastapi>=0.115,<1
-uvicorn[standard]>=0.32,<1
-openai-agents>=0.22.2,<0.23
-eval-type-backport>=0.2; python_version < "3.10"
-python-dotenv>=1.0,<2

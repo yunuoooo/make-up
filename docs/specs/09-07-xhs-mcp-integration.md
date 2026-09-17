@@ -2,7 +2,7 @@
 
 Status: Phase 1 implemented and live-verified
 Date: 2026-09-09
-Related specs: [09-06-sdk-first-agent-runtime-refactor.md](./09-06-sdk-first-agent-runtime-refactor.md), [09-04-agent-runtime-and-observability.md](./09-04-agent-runtime-and-observability.md), [001-mvp.md](./001-mvp.md)
+Related specs: [001-mvp.md](./001-mvp.md)、[09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md)
 
 ## 0. 文档目的
 

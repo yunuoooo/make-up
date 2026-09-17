@@ -2,7 +2,7 @@
 
 Status: Draft
 Date: 2026-09-05
-Related spec: [09-05-phase-1-agent-runtime.md](../specs/09-05-phase-1-agent-runtime.md)
+Related spec: [001-mvp.md](../specs/001-mvp.md)
 
 ## 0. 当前状态
 

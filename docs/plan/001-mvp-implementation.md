@@ -2,7 +2,7 @@
 
 Status: Draft
 Date: 2026-09-04
-Related spec: [001-mvp.md](../specs/001-mvp.md)、[09-04-agent-runtime-and-observability.md](../specs/09-04-agent-runtime-and-observability.md)
+Related spec: [001-mvp.md](../specs/001-mvp.md)
 
 ## 0. 实施目标
 
