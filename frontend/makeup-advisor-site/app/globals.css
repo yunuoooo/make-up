@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../vendor/shadcn-tailwind-4.13.0.css";
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+:root {
+  --background: #f6f4f2;
+  --foreground: #24211f;
+  --card: #ffffff;
+  --card-foreground: #24211f;
+  --popover: #ffffff;
+  --popover-foreground: #24211f;
+  --primary: #242421;
+  --primary-foreground: #ffffff;
+  --secondary: #f1ece9;
+  --secondary-foreground: #37322f;
+  --muted: #eeeae7;
+  --muted-foreground: #756e68;
+  --accent: #fae8ee;
+  --accent-foreground: #a23d5d;
+  --destructive: #ba3751;
+  --border: #ded9d5;
+  --input: #d8d2cd;
+  --ring: #d8587e;
+  --chart-1: #d8587e;
+  --chart-2: #aa6d52;
+  --chart-3: #5f7463;
+  --chart-4: #d7a852;
+  --chart-5: #75677f;
+  --radius: 0.9rem;
+  --sidebar: #20211f;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ef7196;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.1);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #ef7196;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1d1c1b;
+    --foreground: #f7f3f1;
+    --card: #262422;
+    --card-foreground: #f7f3f1;
+    --popover: #282624;
+    --popover-foreground: #f7f3f1;
+    --primary: #f7f3f1;
+    --primary-foreground: #24211f;
+    --secondary: #34302e;
+    --secondary-foreground: #f7f3f1;
+    --muted: #34302e;
+    --muted-foreground: #b9afa9;
+    --accent: #492f38;
+    --accent-foreground: #ffb2c8;
+    --destructive: #ff718b;
+    --border: rgba(255, 255, 255, 0.12);
+    --input: rgba(255, 255, 255, 0.16);
+    --ring: #ef7196;
+    --sidebar: #171816;
+    --sidebar-foreground: #f7f3f1;
+    --sidebar-primary: #ef7196;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: rgba(255, 255, 255, 0.09);
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: rgba(255, 255, 255, 0.09);
+    --sidebar-ring: #ef7196;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button,
+textarea,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(216, 88, 126, 0.22);
+}
