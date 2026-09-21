@@ -1,8 +1,11 @@
-import type { SkuCandidate, UserProduct } from "@/lib/types/domain";
+import type { UserProduct } from "@/lib/types/domain";
 import type { ProductFormState } from "./types";
 
 export function makeClientId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const uuid = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}_${uuid}`;
 }
 
 export function parseTags(value: string): string[] {
@@ -26,16 +29,15 @@ export function productToForm(product: UserProduct): ProductFormState {
   };
 }
 
-export function candidateToForm(candidate: SkuCandidate): ProductFormState {
-  return {
-    brand: candidate.brand,
-    name: candidate.name,
-    category: candidate.category,
-    shade: candidate.shade ?? "",
-    colorFamily: candidate.colorFamily ?? "",
-    finish: candidate.finish ?? "",
-    texture: candidate.texture ?? "",
-    effectTags: candidate.effectTags.join("、"),
-    notes: candidate.reason
-  };
+/** 成品的标签行：品类、妆效、质地加上自由标签，去重后取前若干个。 */
+export function productTags(product: UserProduct, limit = 4): string[] {
+  return Array.from(
+    new Set([product.category, product.finish, product.texture, ...product.effectTags].filter(Boolean))
+  ).slice(0, limit) as string[];
+}
+
+export function timeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "刚刚";
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
 }

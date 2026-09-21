@@ -3,7 +3,7 @@
 ## 项目结构与模块组织
 
 - `app/`：Next.js App Router 页面和 API 路由。
-- `frontend/`：界面组件、hooks、浏览器端类型和全局样式。
+- `frontend/`：界面组件、hooks、浏览器端类型和全局样式。样式走 Tailwind v4 + shadcn/ui，设计 token 定义在 `frontend/styles/globals.css`；`frontend/components/ui/` 只放实际用到的 shadcn 原语，需要新增时按 `components.json` 的别名生成（`@/frontend/components`、`@/frontend/lib`）。
 - `lib/pi/`：Pi Agent 运行时桥接和事件映射，是 Agent 的唯一入口。
 - `lib/storage/`、`lib/types/`：`.local-data/` 下的 JSON 存储和领域类型。
 - `xiaohongshu-makeup-advisor-latest/`：妆容顾问技能，Agent 的行为来源（`SKILL.md` + `references/`）。
@@ -15,7 +15,7 @@
 
 ## 构建、测试与开发命令
 
-执行 `npm install` 安装全部依赖，包括 pi Agent 运行时（`@earendil-works/pi-coding-agent`）。执行 `npm run dev` 启动 Next.js。`npm run build` 构建生产版本，`npm run start` 启动生产服务，`npm run typecheck` 执行 TypeScript 类型检查。
+执行 `npm install` 安装全部依赖，包括 pi Agent 运行时（`@earendil-works/pi-coding-agent`）。执行 `npm run dev` 启动 Next.js。Tailwind v4 通过 `postcss.config.mjs` 接入，扫描范围由 `globals.css` 里的 `@source` 白名单限定（仓库内的 `xiaohongshu-mcp/` 是上游检出，不参与扫描）。`npm run build` 构建生产版本，`npm run start` 启动生产服务，`npm run typecheck` 执行 TypeScript 类型检查。
 
 - `npm test`：运行默认 TypeScript 测试。
 - `npm run test:l1`：运行快速的前端和运行时测试。

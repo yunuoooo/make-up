@@ -1,5 +1,3 @@
-import type { AgentAnswer, UserProduct } from "@/lib/types/domain";
-
 export type RuntimeAnswerStatus = "succeeded" | "degraded" | "clarification" | "failed" | "cancelled" | "limit_exceeded";
 
 export type RuntimeAnswer = {
@@ -82,7 +80,16 @@ export type Turn = {
   role: "user" | "assistant";
   text: string;
   steps?: RuntimeStep[];
-  answer?: AgentAnswer | RuntimeAnswer;
+  answer?: RuntimeAnswer;
+  /** 观测数据跟着轮次走，切回历史对话时仍能看到当时的模型、用量和工具时间线。 */
+  observation?: RuntimeObservation;
+};
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ProductFormState = {
@@ -96,7 +103,3 @@ export type ProductFormState = {
   effectTags: string;
   notes: string;
 };
-
-export type ProductFormChange = (field: keyof ProductFormState, value: string) => void;
-
-export type ProductSelection = UserProduct | null;

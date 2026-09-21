@@ -2,13 +2,31 @@ import type { ProductFormState } from "./types";
 
 export const CURRENT_USER_ID = "local-user";
 
-export const SAMPLE_PROMPTS = [
-  "我想要白开水妆，但是不要太甜，要干净低饱和一点",
-  "小红书搜清冷骨相妆，我应该买什么化妆品",
-  "低饱和雾面通勤妆需要准备哪些产品，直接给候选 SKU"
+/** 与技能 SKILL.md 的用词保持一致，顾问给出的品类能直接落进筛选项。 */
+export const CATEGORY_OPTIONS = [
+  "底妆",
+  "遮瑕",
+  "定妆",
+  "眉笔",
+  "眼影",
+  "眼线",
+  "睫毛膏",
+  "腮红",
+  "修容",
+  "高光",
+  "唇妆",
+  "工具"
 ];
 
-export const CATEGORY_OPTIONS = ["粉底液", "腮红", "眉笔", "唇泥", "唇釉", "修容", "眼影", "卧蚕笔"];
+export const SUGGESTED_PROMPTS = [
+  "韩系氧气妆",
+  "清冷通勤妆",
+  "自然消肿眼妆"
+];
+
+export const INSPIRATION_PROMPT = "韩系氧气妆";
+
+export const INSPIRATION_IMAGE = "/oxygen-makeup.png";
 
 export const EMPTY_PRODUCT_FORM: ProductFormState = {
   brand: "",
@@ -22,8 +40,12 @@ export const EMPTY_PRODUCT_FORM: ProductFormState = {
   notes: ""
 };
 
-export const WELCOME_TURN = {
-  id: "welcome",
-  role: "assistant" as const,
-  text: "告诉我一个文字妆容目标，或者直接输入你想搜索的妆容方向。我会参考互联网信息拆出妆容特点，再看你的妆匣，最后给 SKU 候选。"
-};
+export const CONVERSATION_STORAGE_KEY = "looktrace.conversations.v1";
+
+/** localStorage 容量有限，只保留最近的若干条对话。 */
+export const MAX_CONVERSATIONS = 30;
+
+/** 打开历史对话时的提示：pi 以 --no-session 运行，每轮都是独立上下文。 */
+export const STATELESS_NOTICE = "Agent 每轮独立运行，追问不会带上此前的对话内容。";
+
+export const DISCLAIMER = "建议仅用于妆容与选品，不替代皮肤科诊疗。";
