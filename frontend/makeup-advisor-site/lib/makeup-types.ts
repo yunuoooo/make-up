@@ -22,6 +22,9 @@ export type RecommendationProduct = {
   status: "owned" | "buy";
   label: string;
   evidence: "个人妆品库匹配" | "特征匹配·演示候选";
+  image: string;
+  imageAlt: string;
+  taobaoUrl: string;
 };
 
 export type RecommendationRow = {

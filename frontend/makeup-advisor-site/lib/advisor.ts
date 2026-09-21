@@ -8,8 +8,16 @@ import type {
 type ProductSpec = {
   category: string;
   tokens: string[];
-  candidate: string;
+  candidate: {
+    label: string;
+    image: string;
+    query: string;
+  };
 };
+
+function taobaoSearchUrl(query: string) {
+  return `https://s.taobao.com/search?q=${encodeURIComponent(query)}`;
+}
 
 function productText(product: Product) {
   return [
@@ -36,17 +44,24 @@ function resolveProduct(
   });
 
   if (owned) {
+    const label = `${owned.brand}｜${owned.name}｜${owned.shade}`;
     return {
       status: "owned",
-      label: `${owned.brand}｜${owned.name}｜${owned.shade}`,
+      label,
       evidence: "个人妆品库匹配",
+      image: spec.candidate.image,
+      imageAlt: `${owned.brand} ${owned.name} 同类商品参考图`,
+      taobaoUrl: taobaoSearchUrl(label.replaceAll("｜", " ")),
     };
   }
 
   return {
     status: "buy",
-    label: spec.candidate,
+    label: spec.candidate.label,
     evidence: "特征匹配·演示候选",
+    image: spec.candidate.image,
+    imageAlt: `${spec.candidate.label.replaceAll("｜", " ")} 商品图`,
+    taobaoUrl: taobaoSearchUrl(spec.candidate.query),
   };
 }
 
@@ -78,14 +93,38 @@ export function buildAdvisorReply(
   const isOxygen = /氧气|韩系|白开水|清透|裸妆/.test(prompt);
 
   const eyeCandidate = isCool
-    ? "rom&nd｜Better Than Palette｜#04 Dusty Fog Garden"
-    : "dasique｜Shadow Palette｜#07 Milk Latte";
+    ? {
+        label: "rom&nd｜Better Than Palette｜#04 Dusty Fog Garden",
+        image: "./products/romand-better-than-palette-04.webp",
+        query: "romand Better Than Palette 04 Dusty Fog Garden",
+      }
+    : {
+        label: "dasique｜Shadow Palette｜#07 Milk Latte",
+        image: "./products/dasique-shadow-palette-07.png",
+        query: "dasique Shadow Palette 07 Milk Latte",
+      };
   const blushCandidate = isCool
-    ? "rom&nd｜Better Than Cheek｜#N02 Vine Nude"
-    : "rom&nd｜Better Than Cheek｜#C02 Blueberry Chip";
+    ? {
+        label: "rom&nd｜Better Than Cheek｜#N02 Vine Nude",
+        image: "./products/romand-better-than-cheek-n02.jpg",
+        query: "romand Better Than Cheek N02 Vine Nude",
+      }
+    : {
+        label: "rom&nd｜Better Than Cheek｜#C02 Blueberry Chip",
+        image: "./products/romand-better-than-cheek-c02.jpg",
+        query: "romand Better Than Cheek C02 Blueberry Chip",
+      };
   const lipCandidate = isCool
-    ? "rom&nd｜Glasting Melting Balm｜#07 Mauve Whip"
-    : "rom&nd｜Glasting Melting Balm｜#03 Sorbet Balm";
+    ? {
+        label: "rom&nd｜Glasting Melting Balm｜#07 Mauve Whip",
+        image: "./products/romand-glasting-melting-balm-07.jpg",
+        query: "romand Glasting Melting Balm 07 Mauve Whip",
+      }
+    : {
+        label: "rom&nd｜Glasting Melting Balm｜#03 Sorbet Balm",
+        image: "./products/romand-glasting-melting-balm-03.jpg",
+        query: "romand Glasting Melting Balm 03 Sorbet Balm",
+      };
 
   const necessary: RecommendationRow[] = [
     row(products, {
@@ -97,8 +136,12 @@ export function buildAdvisorReply(
         {
           category: "底妆",
           tokens: ["轻薄", "清透", "水润", "奶油", "自然光泽"],
-          candidate:
-            "JUNG SAEM MOOL｜Essential Skin Nuder Cushion（水光版）｜色号待试：按颈部同色选择",
+          candidate: {
+            label:
+              "JUNG SAEM MOOL｜Essential Skin Nuder Cushion（水光版）｜色号待试：按颈部同色选择",
+            image: "./products/jsm-essential-skin-nuder-cushion.jpg",
+            query: "JUNG SAEM MOOL Essential Skin Nuder Cushion 水光版",
+          },
         },
       ],
     }),
@@ -111,7 +154,11 @@ export function buildAdvisorReply(
         {
           category: "眉笔",
           tokens: ["灰棕", "自然棕", "细芯", "毛流"],
-          candidate: "ETUDE｜Drawing Eye Brow New｜#04 Dark Gray",
+          candidate: {
+            label: "ETUDE｜Drawing Eye Brow New｜#04 Dark Gray",
+            image: "./products/etude-drawing-eye-brow-04.jpg",
+            query: "ETUDE Drawing Eye Brow New 04 Dark Gray",
+          },
         },
       ],
     }),
@@ -139,12 +186,20 @@ export function buildAdvisorReply(
         {
           category: "眼线",
           tokens: ["棕", "细", "自然"],
-          candidate: "CANMAKE｜Creamy Touch Liner｜#02 Medium Brown",
+          candidate: {
+            label: "CANMAKE｜Creamy Touch Liner｜#02 Medium Brown",
+            image: "./products/canmake-creamy-touch-liner-02.jpg",
+            query: "CANMAKE Creamy Touch Liner 02 Medium Brown",
+          },
         },
         {
           category: "睫毛膏",
           tokens: ["纤长", "根根分明", "棕", "自然"],
-          candidate: "ETUDE｜Curl Fix Mascara｜#02 Brown",
+          candidate: {
+            label: "ETUDE｜Curl Fix Mascara｜#02 Brown",
+            image: "./products/etude-curl-fix-mascara-02.png",
+            query: "ETUDE Curl Fix Mascara 02 Brown",
+          },
         },
       ],
     }),
@@ -188,7 +243,11 @@ export function buildAdvisorReply(
         {
           category: "高光",
           tokens: ["细闪", "香槟", "自然", "水光"],
-          candidate: "CEZANNE｜Pearl Glow Highlight｜#01 Champagne Beige",
+          candidate: {
+            label: "CEZANNE｜Pearl Glow Highlight｜#01 Champagne Beige",
+            image: "./products/cezanne-pearl-glow-highlight-01.jpg",
+            query: "CEZANNE Pearl Glow Highlight 01 Champagne Beige",
+          },
         },
       ],
     }),
@@ -201,8 +260,12 @@ export function buildAdvisorReply(
         {
           category: "遮瑕",
           tokens: ["局部", "轻薄", "自然"],
-          candidate:
-            "the SAEM｜Cover Perfection Tip Concealer｜色号待试：按瑕疵处而非手背选色",
+          candidate: {
+            label:
+              "the SAEM｜Cover Perfection Tip Concealer｜色号待试：按瑕疵处而非手背选色",
+            image: "./products/the-saem-cover-perfection-tip-concealer.png",
+            query: "the SAEM Cover Perfection Tip Concealer",
+          },
         },
       ],
     }),
@@ -214,7 +277,7 @@ export function buildAdvisorReply(
       ? "薄透奶油肌、淡粉气色和克制眉眼共同组成轻盈的韩系氧气感；重点是留白，不是把每一步都画满。"
       : "以干净底妆、协调色调和清晰但克制的视觉重心完成这套妆；先把妆效做准，再决定是否增加细节。",
     researchNotice:
-      "当前网页演示版尚未连接小红书登录态；以下商品是依据妆效规格生成的特征匹配候选，不声称为博主同款。购买前请复核在售版本与现场试色。",
+      "当前网页演示版尚未连接小红书登录态；以下商品是依据妆效规格生成的特征匹配候选，不声称为博主同款。点击商品卡会打开淘宝搜索结果，购买前请复核店铺、在售版本与现场试色。",
     image: isOxygen ? "./oxygen-makeup.png" : undefined,
     necessary,
     optional,

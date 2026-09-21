@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   Archive,
+  ArrowUpRight,
   ArrowUp,
   ChevronRight,
   CircleAlert,
@@ -22,6 +23,7 @@ import {
   PencilLine,
   Plus,
   Search,
+  ShoppingBag,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -75,6 +77,7 @@ import type {
   ChatMessage,
   ConversationSummary,
   Product,
+  RecommendationProduct,
   RecommendationRow,
 } from "@/lib/makeup-types";
 import { buildAdvisorReply } from "@/lib/advisor";
@@ -191,6 +194,67 @@ function timeLabel(value: string) {
   }).format(date);
 }
 
+function ProductRecommendationCard({ product }: { product: RecommendationProduct }) {
+  const [brand, name, ...details] = product.label.split("｜");
+
+  return (
+    <a
+      href={product.taobaoUrl}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      aria-label={`${product.label}：去淘宝查看商品详情`}
+      className="group block overflow-hidden rounded-[18px] border border-black/[.075] bg-[#fffdfc] shadow-[0_8px_24px_rgba(55,42,37,.05)] transition duration-200 hover:-translate-y-0.5 hover:border-[#ff6a3d]/35 hover:shadow-[0_14px_34px_rgba(88,49,36,.11)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e45d78] focus-visible:ring-offset-2"
+    >
+      <div className="grid grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[116px_minmax(0,1fr)]">
+        <div className="relative min-h-[156px] overflow-hidden border-r border-black/[.055] bg-[#f5f0ed]">
+          <img
+            src={product.image}
+            alt={product.imageAlt}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-contain p-2 transition duration-300 group-hover:scale-[1.035]"
+          />
+          <span className="absolute left-2 top-2 rounded-full bg-white/92 px-2 py-1 text-[10px] font-semibold tracking-[.04em] text-[#e55427] shadow-sm backdrop-blur-sm">
+            淘宝推荐
+          </span>
+        </div>
+
+        <div className="flex min-w-0 flex-col p-3.5">
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className={
+                product.status === "owned"
+                  ? "inline-flex rounded-full bg-[#e6f3e9] px-2 py-1 text-[11px] font-semibold text-[#397049]"
+                  : "inline-flex rounded-full bg-[#fff0d8] px-2 py-1 text-[11px] font-semibold text-[#91601a]"
+              }
+            >
+              {product.status === "owned" ? "✅ 已有" : "💰 需要买"}
+            </span>
+            <ArrowUpRight className="size-4 shrink-0 text-[#b5aaa3] transition group-hover:text-[#e55427]" />
+          </div>
+
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[.08em] text-[#9a5a6d]">
+            {brand}
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-5 text-[#302b28]">{name}</p>
+          {details.length ? (
+            <p className="mt-1 line-clamp-2 text-[12px] leading-[1.55] text-[#7e756f]">
+              {details.join(" · ")}
+            </p>
+          ) : null}
+
+          <div className="mt-auto pt-3">
+            <p className="flex items-center gap-1.5 text-[12px] font-semibold text-[#e55427]">
+              <ShoppingBag className="size-3.5" />
+              点击查看商品详情，可加入购物车
+            </p>
+            <p className="mt-1 text-[11px] text-[#a09892]">{product.evidence} · 前往淘宝</p>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
 function ResultTable({
   title,
   rows,
@@ -216,15 +280,51 @@ function ResultTable({
       </div>
 
       <div className="overflow-hidden rounded-[18px] border border-black/[.07] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse text-left">
+        <div className="divide-y divide-black/[.055] 2xl:hidden">
+          {rows.map((item) => (
+            <article key={`${item.area}-${item.target}`} className="p-4 sm:p-5">
+              <dl className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-[11px] font-semibold tracking-[.08em] text-[#a29a94]">区域</dt>
+                  <dd className="mt-1 text-sm font-semibold text-[#3b3632]">{item.area}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold tracking-[.08em] text-[#a29a94]">目标特点</dt>
+                  <dd className="mt-1 text-sm leading-6 text-[#5e5751]">{item.target}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold tracking-[.08em] text-[#a29a94]">用什么达成</dt>
+                  <dd className="mt-1 text-sm leading-6 text-[#5e5751]">{item.method}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold tracking-[.08em] text-[#a29a94]">怎么选与怎么做</dt>
+                  <dd className="mt-1 text-sm leading-6 text-[#716a64]">{item.guidance}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-5 border-t border-black/[.055] pt-4">
+                <p className="mb-3 text-[11px] font-semibold tracking-[.08em] text-[#a65a70]">
+                  淘宝推荐与具体产品
+                </p>
+                <div className={item.products.length > 1 ? "grid gap-3 lg:grid-cols-2" : "max-w-xl"}>
+                  {item.products.map((product) => (
+                    <ProductRecommendationCard key={product.label} product={product} />
+                  ))}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto 2xl:block">
+          <table className="w-full min-w-[1080px] border-collapse text-left">
             <thead>
               <tr className="border-b border-black/[.06] bg-[#f8f6f4] text-[12px] font-medium text-[#857e78]">
-                <th className="w-[12%] px-4 py-3">区域</th>
-                <th className="w-[18%] px-4 py-3">目标特点</th>
-                <th className="w-[15%] px-4 py-3">用什么达成</th>
-                <th className="w-[25%] px-4 py-3">怎么选与怎么做</th>
-                <th className="w-[30%] px-4 py-3">购买结论与具体产品</th>
+                <th className="w-[10%] px-4 py-3">区域</th>
+                <th className="w-[15%] px-4 py-3">目标特点</th>
+                <th className="w-[13%] px-4 py-3">用什么达成</th>
+                <th className="w-[22%] px-4 py-3">怎么选与怎么做</th>
+                <th className="w-[40%] px-4 py-3">淘宝推荐与具体产品</th>
               </tr>
             </thead>
             <tbody>
@@ -239,21 +339,7 @@ function ResultTable({
                   <td className="px-4 py-4 text-sm leading-6 text-[#716a64]">{item.guidance}</td>
                   <td className="space-y-3 px-4 py-4">
                     {item.products.map((product) => (
-                      <div key={product.label}>
-                        <span
-                          className={
-                            product.status === "owned"
-                              ? "inline-flex rounded-full bg-[#e6f3e9] px-2 py-1 text-[12px] font-semibold text-[#397049]"
-                              : "inline-flex rounded-full bg-[#fff0d8] px-2 py-1 text-[12px] font-semibold text-[#91601a]"
-                          }
-                        >
-                          {product.status === "owned" ? "✅ 已有" : "💰 需要买"}
-                        </span>
-                        <p className="mt-1.5 text-sm font-semibold leading-6 text-[#36312e]">
-                          {product.label}
-                        </p>
-                        <p className="mt-0.5 text-[12px] text-[#928a83]">{product.evidence}</p>
-                      </div>
+                      <ProductRecommendationCard key={product.label} product={product} />
                     ))}
                   </td>
                 </tr>
