@@ -67,6 +67,9 @@ test("L3 loads the repo skill into Pi and reads it with the built-in read tool",
     const loaded = JSON.stringify(requests.at(-1)?.messages ?? []);
     assert.match(loaded, /小红书妆容顾问/);
     assert.match(loaded, /双阶段推荐 Happy Path/);
+    // 商品卡片的机器可读契约必须随技能进上下文，否则服务端拿不到要补全的清单。
+    assert.match(loaded, /looktrace-products/);
+    assert.match(loaded, /looktrace\.products\.v1/);
 
     // 3. 事件流对前端透出 read 调用与初始技能路径。
     assert.ok(events.some((event) => event.event === "tool_started" && event.data.toolName === "read"));

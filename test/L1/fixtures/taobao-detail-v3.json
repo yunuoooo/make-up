@@ -1,0 +1,207 @@
+{
+  "code": 0,
+  "message": null,
+  "requestId": "d432db349f7448f1af761944d9635e5d",
+  "recordTime": "2026-09-21T23:24:08.096271001",
+  "data": {
+    "num_iid": "1004620982324",
+    "title": "橘朵单色腮红juduo双色腮红盘06裸妆43腮紫35奶茶橘朵手指粉扑3枚",
+    "price": "17.90",
+    "orginal_price": "17.90",
+    "nick": "Bymi美妆集合店",
+    "detail_url": "https://item.taobao.com/item.htm?id=1004620982324",
+    "pic_url": "//img.alicdn.com/imgextra/i2/392226840/O1CN01CQTtFl20OmERB4Vsl_!!392226840.jpg",
+    "item_imgs": [
+      {
+        "url": "//img.alicdn.com/imgextra/i2/392226840/O1CN01CQTtFl20OmERB4Vsl_!!392226840.jpg"
+      },
+      {
+        "url": "//img.alicdn.com/imgextra/i3/392226840/O1CN01wqA3CH20OmCbaM9dm_!!392226840.jpg"
+      },
+      {
+        "url": "//img.alicdn.com/imgextra/i2/392226840/O1CN01Hbvmrt20OmEQuINw5_!!392226840.jpg"
+      },
+      {
+        "url": "//img.alicdn.com/imgextra/i2/392226840/O1CN018hYIVY20OmCbwVskr_!!392226840.png"
+      },
+      {
+        "url": "//img.alicdn.com/imgextra/i4/392226840/O1CN01A6LbcB20OmER7PCgT_!!392226840.jpg"
+      }
+    ],
+    "total_sold": "200",
+    "tmall": false,
+    "props": [
+      {
+        "name": "化妆品备案编号/注册证号",
+        "value": "沪G妆网备字2021519910"
+      },
+      {
+        "name": "品牌",
+        "value": "JudydoLL/橘朵"
+      },
+      {
+        "name": "品名",
+        "value": "单色腮红"
+      },
+      {
+        "name": "功效",
+        "value": "美容修饰,修饰肤色,提升气色"
+      },
+      {
+        "name": "上市时间",
+        "value": "2023年春季"
+      },
+      {
+        "name": "产品名称",
+        "value": "橘朵单色腮红#52"
+      },
+      {
+        "name": "生产许可证号",
+        "value": "沪妆20160021"
+      },
+      {
+        "name": "保质期",
+        "value": "3年"
+      },
+      {
+        "name": "国产/进口",
+        "value": "国产"
+      },
+      {
+        "name": "质地",
+        "value": "粉状"
+      },
+      {
+        "name": "主要成分",
+        "value": "天然矿物成分"
+      },
+      {
+        "name": "产地",
+        "value": "中国大陆"
+      },
+      {
+        "name": "妆效",
+        "value": "珠光/带闪粉,雾面,珠光,自然裸妆,微光,持妆,哑光,收缩色"
+      },
+      {
+        "name": "规格类型",
+        "value": "正常规格"
+      },
+      {
+        "name": "包装种类",
+        "value": "基础包装"
+      },
+      {
+        "name": "是否为特殊用途化妆品",
+        "value": "否"
+      },
+      {
+        "name": "生产企业信息",
+        "value": "科丝美诗（广州）化妆品有限公司"
+      },
+      {
+        "name": "颜色分类",
+        "value": "橘朵手指粉扑-3枚装,06#杏子色 (哑光细闪) ❤hot,03#蜜桃色（哑光细闪） 减龄元气色,02#枯玫瑰 (哑光) ❤优雅百搭！,04#奶油橘 （哑光） 元气少女,35#烤奶茶色（哑光） ❤万能打底收缩色,43#蓝莓夜 （哑光） ❤腮紫！蓬胀色,44#草莓牛奶（哑光） ❤樱桃牛奶蓬胀色,48#薰桃豆沙（哑光） 灰紫芋烟粉色,41#蜜桃奶茶（哑光） ❤日杂感不挑肤色"
+      }
+    ],
+    "skus": {
+      "sku": [
+        {
+          "price": 17.9,
+          "total_price": 0,
+          "orginal_price": 17.9,
+          "properties": "1627207:43867750194",
+          "properties_name": "1627207:43867750194:颜色分类:橘朵手指粉扑-3枚装",
+          "quantity": 200,
+          "sku_id": "6255280963261"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:43867750195",
+          "properties_name": "1627207:43867750195:颜色分类:06#杏子色 (哑光细闪) ❤hot",
+          "quantity": 200,
+          "sku_id": "6255280963262"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:22001914902",
+          "properties_name": "1627207:22001914902:颜色分类:03#蜜桃色（哑光细闪） 减龄元气色",
+          "quantity": 200,
+          "sku_id": "6255280963252"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:43867750196",
+          "properties_name": "1627207:43867750196:颜色分类:02#枯玫瑰 (哑光) ❤优雅百搭！",
+          "quantity": 200,
+          "sku_id": "6255280963263"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:43867750197",
+          "properties_name": "1627207:43867750197:颜色分类:04#奶油橘 （哑光） 元气少女",
+          "quantity": 200,
+          "sku_id": "6255280963264"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:22466964599",
+          "properties_name": "1627207:22466964599:颜色分类:35#烤奶茶色（哑光） ❤万能打底收缩色",
+          "quantity": 200,
+          "sku_id": "6255280963254"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:22576516370",
+          "properties_name": "1627207:22576516370:颜色分类:43#蓝莓夜 （哑光） ❤腮紫！蓬胀色",
+          "quantity": 200,
+          "sku_id": "6255280963259"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:22466964601",
+          "properties_name": "1627207:22466964601:颜色分类:44#草莓牛奶（哑光） ❤樱桃牛奶蓬胀色",
+          "quantity": 200,
+          "sku_id": "6255280963255"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:22466964605",
+          "properties_name": "1627207:22466964605:颜色分类:48#薰桃豆沙（哑光） 灰紫芋烟粉色",
+          "quantity": 200,
+          "sku_id": "6255280963256"
+        },
+        {
+          "price": 28.8,
+          "total_price": 0,
+          "orginal_price": 28.8,
+          "properties": "1627207:22001914940",
+          "properties_name": "1627207:22001914940:颜色分类:41#蜜桃奶茶（哑光） ❤日杂感不挑肤色",
+          "quantity": 200,
+          "sku_id": "6255280963253"
+        }
+      ]
+    },
+    "error": "",
+    "warning": "",
+    "url_log": "https://h5api.m.taobao.com/h5/mtop.taobao.detail.getdetail/6.0/?jsv=2.7.2&appKey=12574478&t=1779000000000&sign=deadbeef",
+    "_ddf": "ykn1",
+    "desc": "<div style=\"width: 750px\"><img src=\"//img.alicdn.com/imgextra/placeholder.png\"></div>"
+  }
+}

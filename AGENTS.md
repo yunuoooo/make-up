@@ -5,6 +5,7 @@
 - `app/`：Next.js App Router 页面和 API 路由。
 - `frontend/`：界面组件、hooks、浏览器端类型和全局样式。样式走 Tailwind v4 + shadcn/ui，设计 token 定义在 `frontend/styles/globals.css`；`frontend/components/ui/` 只放实际用到的 shadcn 原语，需要新增时按 `components.json` 的别名生成（`@/frontend/components`、`@/frontend/lib`）。
 - `lib/pi/`：Pi Agent 运行时桥接和事件映射，是 Agent 的唯一入口。
+- `lib/commerce/`：淘宝商品卡片链路（技能产出机器可读商品块 → 聚合中转适配器 → 卡片补全编排）。上游字段、错误码和超时规则以 `docs/specs/09-21-justoneapi-taobao-ssot.md` 为准，换供应商只改 `lib/commerce/taobao.ts`。
 - `lib/storage/`、`lib/types/`：`.local-data/` 下的 JSON 存储和领域类型。
 - `xiaohongshu-makeup-advisor-latest/`：妆容顾问技能，Agent 的行为来源（`SKILL.md` + `references/`）。
 - `xiaohongshu-mcp/`：小红书 MCP 服务（上游检出 + `bin/` 下的预编译二进制）。

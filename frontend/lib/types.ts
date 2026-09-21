@@ -1,3 +1,5 @@
+import type { ProductCardsState } from "@/lib/commerce/types";
+
 export type RuntimeAnswerStatus = "succeeded" | "degraded" | "clarification" | "failed" | "cancelled" | "limit_exceeded";
 
 export type RuntimeAnswer = {
@@ -83,6 +85,8 @@ export type Turn = {
   answer?: RuntimeAnswer;
   /** 观测数据跟着轮次走，切回历史对话时仍能看到当时的模型、用量和工具时间线。 */
   observation?: RuntimeObservation;
+  /** 淘宝商品卡片：服务端在答案之后渐进补全，随对话一起存进浏览器本地。 */
+  cards?: ProductCardsState;
 };
 
 export type ConversationSummary = {

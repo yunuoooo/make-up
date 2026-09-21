@@ -5,6 +5,7 @@ import { ArrowUp, LoaderCircle, Sparkles } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
 import { Textarea } from "@/frontend/components/ui/textarea";
 import { AdvisorMessage } from "@/frontend/components/chat/AdvisorMessage";
+import { ProductCardStrip } from "@/frontend/components/chat/ProductCardStrip";
 import { TurnTrace } from "@/frontend/components/chat/TurnTrace";
 import {
   DISCLAIMER,
@@ -65,11 +66,14 @@ export function ChatView({
                       <TurnTrace
                         steps={turn.steps ?? []}
                         observation={turn.observation}
-                        isStreaming={isSending && index === turns.length - 1}
+                        // 商品卡片在 result 之后才回来，这期间答案已经完整了：
+                        // 按 answer 判定，过程面板才会在答案落地时收起，而不是等淘宝。
+                        isStreaming={isSending && index === turns.length - 1 && !turn.answer}
                       />
                       {turn.text ? (
                         <div className="mt-3">
                           <AdvisorMessage text={turn.text} />
+                          <ProductCardStrip state={turn.cards} />
                         </div>
                       ) : isSending && index === turns.length - 1 ? (
                         <div className="flex items-center gap-2 pt-3 text-sm text-[#77706a]">

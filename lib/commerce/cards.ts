@@ -1,0 +1,225 @@
+import { normalizeForMatch, productKey } from "./product-block.ts";
+import { TaobaoApiError, type TaobaoClient } from "./taobao.ts";
+import type {
+  ProductCard,
+  ProductCardFailure,
+  ProductCardsCache,
+  ProductCardsStatus,
+  ProductRef,
+  TaobaoItemDetail,
+  TaobaoSearchItem
+} from "./types.ts";
+
+/**
+ * 把技能给出的商品清单补全成卡片：逐件 搜索 → 选品 → 详情。
+ * 规则（选品、并发、预算、配额停止）见 docs/specs/09-21-taobao-product-cards.md 第 7 节。
+ */
+
+export const DEFAULT_CARD_LIMIT = 8;
+export const DEFAULT_BUDGET_MS = 60_000;
+export const DEFAULT_CONCURRENCY = 2;
+
+/** 详情失败时的兜底链接：这是该商品的规范详情页，不是搜索结果页。 */
+export function itemUrl(numIid: string): string {
+  return `https://item.taobao.com/item.htm?id=${encodeURIComponent(numIid)}`;
+}
+
+/** 搜索词 = 品牌 + 品名 + 色号，压空白、去首尾标点、限长。 */
+export function buildSearchKeyword(ref: ProductRef): string {
+  return [ref.brand, ref.name, ref.shade]
+    .filter((part): part is string => Boolean(part && part.trim()))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s，,。.、；;：:！!？?]+/, "")
+    .replace(/[\s，,。.、；;：:！!?？]+$/, "")
+    .slice(0, 60)
+    .trim();
+}
+
+/**
+ * 选品：跳过广告位（isP4p），优先「标题包含品牌名」的第一条，
+ * 前 3 条都不含品牌名时取第一条。整页全是广告位时退而取广告——仍是可购买商品，
+ * 总比不出卡好。
+ */
+export function pickSearchItem(items: TaobaoSearchItem[], brand: string): TaobaoSearchItem | undefined {
+  const usable = items.filter((item) => item.numIid && item.title);
+  if (!usable.length) return undefined;
+
+  const organic = usable.filter((item) => !item.isP4p);
+  const pool = organic.length ? organic : usable;
+
+  const target = normalizeForMatch(brand);
+  if (target) {
+    const matched = pool.slice(0, 3).find((item) => normalizeForMatch(item.title).includes(target));
+    if (matched) return matched;
+  }
+  return pool[0];
+}
+
+export type BuildProductCardsOptions = {
+  client: TaobaoClient;
+  limit?: number;
+  budgetMs?: number;
+  concurrency?: number;
+  signal?: AbortSignal;
+  cache?: ProductCardsCache;
+  now?: () => number;
+  /** 每解析出一张就回调一次，调用方据此渐进式推事件。 */
+  onCard?: (card: ProductCard) => void | Promise<void>;
+};
+
+export type ProductCardsOutcome = {
+  status: ProductCardsStatus;
+  cards: ProductCard[];
+  failed: ProductCardFailure[];
+};
+
+function isFatal(error: unknown): error is TaobaoApiError {
+  return error instanceof TaobaoApiError && (error.quotaLimited || error.authFailed);
+}
+
+function fatalReason(error: TaobaoApiError): string {
+  return error.quotaLimited ? "淘宝查询额度受限" : "淘宝凭据失效";
+}
+
+function failureReason(error: unknown): string {
+  if (error instanceof TaobaoApiError) {
+    return error.code === -1 ? error.message : `淘宝接口失败 code=${error.code}`;
+  }
+  return "淘宝查询失败";
+}
+
+/** 只重试可重试的错（采集失败 301、HTTP 5xx、网络超时）；配额与凭据错直接抛出。 */
+async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof TaobaoApiError && error.retryable) return await operation();
+    throw error;
+  }
+}
+
+function cardFromDetail(ref: ProductRef, picked: TaobaoSearchItem, detail: TaobaoItemDetail): ProductCard {
+  const image = detail.images[0] ?? picked.picUrl;
+  const price = detail.price ?? picked.price;
+  const shop = detail.shop ?? picked.shop;
+  return {
+    id: productKey(ref),
+    category: ref.category,
+    brand: ref.brand,
+    name: ref.name,
+    ...(ref.shade ? { shade: ref.shade } : {}),
+    section: ref.section,
+    title: detail.title || picked.title,
+    ...(image ? { image } : {}),
+    ...(price ? { price } : {}),
+    ...(shop ? { shop } : {}),
+    purchaseUrl: detail.detailUrl ?? itemUrl(picked.numIid),
+    detailLevel: "detail"
+  };
+}
+
+/** 详情没取到：用搜索结果的图和链接，卡片标记为 search 回退。 */
+function cardFromSearch(ref: ProductRef, picked: TaobaoSearchItem): ProductCard {
+  return {
+    id: productKey(ref),
+    category: ref.category,
+    brand: ref.brand,
+    name: ref.name,
+    ...(ref.shade ? { shade: ref.shade } : {}),
+    section: ref.section,
+    title: picked.title,
+    ...(picked.picUrl ? { image: picked.picUrl } : {}),
+    ...(picked.price ? { price: picked.price } : {}),
+    ...(picked.shop ? { shop: picked.shop } : {}),
+    purchaseUrl: itemUrl(picked.numIid),
+    detailLevel: "search"
+  };
+}
+
+export async function buildProductCards(
+  items: ProductRef[],
+  options: BuildProductCardsOptions
+): Promise<ProductCardsOutcome> {
+  const now = options.now ?? (() => Date.now());
+  const limit = Math.max(1, options.limit ?? DEFAULT_CARD_LIMIT);
+  const budgetMs = Math.max(1, options.budgetMs ?? DEFAULT_BUDGET_MS);
+  const targets = items.slice(0, limit);
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? DEFAULT_CONCURRENCY, targets.length || 1));
+  const deadline = now() + budgetMs;
+
+  const cards: ProductCard[] = [];
+  const failed: ProductCardFailure[] = [];
+  let stopReason: string | null = null;
+  let cursor = 0;
+
+  const fail = (ref: ProductRef, reason: string) => {
+    failed.push({ brand: ref.brand, name: ref.name, reason });
+  };
+
+  async function handle(ref: ProductRef): Promise<void> {
+    const key = productKey(ref);
+    const cached = options.cache?.get(key);
+    if (cached) {
+      cards.push(cached);
+      await options.onCard?.(cached);
+      return;
+    }
+
+    const keyword = buildSearchKeyword(ref);
+    if (!keyword) {
+      fail(ref, "商品名不完整");
+      return;
+    }
+
+    const found = await withRetry(() => options.client.searchItems(keyword, { page: 1, signal: options.signal }));
+    const picked = pickSearchItem(found, ref.brand);
+    if (!picked) {
+      fail(ref, "淘宝没有搜到可用商品");
+      return;
+    }
+
+    let detail: TaobaoItemDetail | null = null;
+    try {
+      detail = await withRetry(() => options.client.getItemDetail(picked.numIid, { signal: options.signal }));
+    } catch (error) {
+      if (isFatal(error)) throw error;
+      // 详情失败/超时：回退搜索结果的图与拼出的详情页，不算整件失败。
+    }
+
+    const card = detail ? cardFromDetail(ref, picked, detail) : cardFromSearch(ref, picked);
+    cards.push(card);
+    options.cache?.set(key, card);
+    await options.onCard?.(card);
+  }
+
+  async function worker(): Promise<void> {
+    while (cursor < targets.length) {
+      if (options.signal?.aborted) return;
+      const ref = targets[cursor++];
+      if (stopReason) {
+        fail(ref, stopReason);
+        continue;
+      }
+      if (now() >= deadline) {
+        fail(ref, "超出本轮淘宝查询预算");
+        continue;
+      }
+      try {
+        await handle(ref);
+      } catch (error) {
+        if (isFatal(error)) {
+          stopReason = fatalReason(error);
+          fail(ref, stopReason);
+          continue;
+        }
+        fail(ref, failureReason(error));
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  const status: ProductCardsStatus = cards.length === 0 ? "unavailable" : failed.length ? "partial" : "ok";
+  return { status, cards, failed };
+}

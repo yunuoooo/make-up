@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState, type FormEvent } from "react";
+import { stripProductBlock } from "@/lib/commerce/product-block";
+import type { ProductCardsEvent } from "@/lib/commerce/types";
 import { makeClientId } from "@/frontend/lib/formatters";
+import { mergeProductCards } from "@/frontend/lib/product-cards";
 import { readSse } from "@/frontend/lib/sse";
 import {
   isRuntimeAnswer,
@@ -33,12 +36,19 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
   /** 打开的是历史对话时为真：Agent 不记得这些内容，界面要如实说明。 */
   const [isHistorical, setIsHistorical] = useState(false);
   const isSendingRef = useRef(false);
+  /**
+   * 当前这轮的编号。答案落地后流还会开着等商品卡片（最长一整轮淘宝预算），
+   * 这期间用户可能已经切到别的对话；晚到的事件不能再往界面上写，
+   * 否则被丢弃的那一轮会「复活」到新对话里。
+   */
+  const runIdRef = useRef(0);
   const onErrorRef = useRef(onError);
   const onPersistRef = useRef(onPersist);
   onErrorRef.current = onError;
   onPersistRef.current = onPersist;
 
   const startNewChat = useCallback(() => {
+    runIdRef.current += 1;
     setTurns([]);
     setConversationId(null);
     setMessage("");
@@ -47,6 +57,7 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
   }, []);
 
   const loadConversation = useCallback((id: string, storedTurns: Turn[]) => {
+    runIdRef.current += 1;
     setTurns(storedTurns);
     setConversationId(id);
     setMessage("");
@@ -94,6 +105,7 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
       render();
     };
 
+    const runId = (runIdRef.current += 1);
     isSendingRef.current = true;
     setIsSending(true);
     setIsHistorical(false);
@@ -115,6 +127,8 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
       }
 
       for await (const parsed of readSse(response)) {
+        // 用户已经开了新对话或切到历史对话：这轮的事件到此为止，别再改界面。
+        if (runIdRef.current !== runId) return;
         if (parsed.event === "status") {
           const status = parsed.data as { message?: string; traceId?: string; agentRunId?: string; skillPath?: string };
           setRuntimePhase(status.message ?? null);
@@ -232,7 +246,14 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
 
         if (parsed.event === "text_delta") {
           buffer += (parsed.data as { text?: string }).text ?? "";
-          assistantTurn.text = buffer;
+          // 答案末尾的机器可读商品块要藏起来，否则流式阶段会闪出半截 JSON；
+          // 最终文本由服务端在 result 里剥好，两边用同一个函数。
+          assistantTurn.text = stripProductBlock(buffer);
+          render();
+        }
+
+        if (parsed.event === "product_cards") {
+          assistantTurn.cards = mergeProductCards(assistantTurn.cards, parsed.data as ProductCardsEvent);
           render();
         }
 
@@ -245,6 +266,10 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
           assistantTurn.answer = nextAnswer;
           assistantTurn.observation = observation ?? undefined;
           render();
+          // 答案到这儿就完整了。商品卡片还在服务端查淘宝，最多要几十秒，
+          // 不能让它把输入框锁住——后面的 product_cards 事件照旧合并进本轮。
+          isSendingRef.current = false;
+          setIsSending(false);
         }
 
         if (parsed.event === "error") {
@@ -260,8 +285,11 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
       assistantTurn.observation = observation ?? undefined;
       render();
     } finally {
-      isSendingRef.current = false;
-      setIsSending(false);
+      // 只有还属于当前这轮才复位发送状态：被切走的那一轮不能在下一轮进行中把锁放开。
+      if (runIdRef.current === runId) {
+        isSendingRef.current = false;
+        setIsSending(false);
+      }
     }
 
     const finalTurns = [...base, userTurn, assistantTurn];
