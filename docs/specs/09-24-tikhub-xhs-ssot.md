@@ -168,7 +168,7 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 | `XHS_API_TIMEOUT_SECONDS` | `60` | 单请求超时（实测详情往返 20s 量级，仍待 P95） |
 | `XHS_API_BUDGET_SECONDS` | `60` | 本轮累计上游耗时预算 |
 | `XHS_API_SEARCH_PAGES` | `2` | 搜索翻页上限 |
-| `XHS_API_DETAIL_LIMIT` | `6` | 详情篇数上限 |
+| `XHS_API_DETAIL_LIMIT` | `10` | 详情篇数上限（技能要求的 6–10 篇的上界；每篇一次计费调用） |
 
 - token 在**请求头**：不要把它写进日志、错误信息、SSE、trace 或异常堆栈。
 - `lib/pi/events.ts` 的 `redactSensitive` 仍覆盖 `XHS_API_TOKEN` 的值（按变量名匹配 `TOKEN` + 按值替换）——**换到 header 不等于可以不脱敏**，它还是可能被模型或工具结果带出来。

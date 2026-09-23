@@ -161,7 +161,7 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
   const mode = readMode(env);
 
   const searchPages = positiveInt(env.XHS_API_SEARCH_PAGES, 2);
-  const detailLimit = positiveInt(env.XHS_API_DETAIL_LIMIT, 6);
+  const detailLimit = positiveInt(env.XHS_API_DETAIL_LIMIT, 10);
   const budgetMs = positiveInt(env.XHS_API_BUDGET_SECONDS, 60) * 1000;
 
   const state: TurnState = {
