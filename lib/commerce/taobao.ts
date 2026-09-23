@@ -41,8 +41,38 @@ export class TaobaoApiError extends Error {
 
 export type TaobaoClient = {
   configured: boolean;
-  searchItems(keyword: string, options?: { page?: number; signal?: AbortSignal }): Promise<TaobaoSearchItem[]>;
-  getItemDetail(itemId: string, options?: { signal?: AbortSignal }): Promise<TaobaoItemDetail | null>;
+  searchItems(
+    keyword: string,
+    options?: { page?: number; signal?: AbortSignal; tag?: string }
+  ): Promise<TaobaoSearchItem[]>;
+  getItemDetail(
+    itemId: string,
+    options?: { signal?: AbortSignal; tag?: string }
+  ): Promise<TaobaoItemDetail | null>;
+};
+
+/**
+ * 单次上游调用的观测信息。
+ *
+ * **刻意没有 URL**：token 走 query 参数，URL 永远不进观测数据——沿用本文件顶部
+ * 「不把请求 URL 放进任何错误信息或日志」的既有纪律。
+ */
+export type TaobaoCallInfo = {
+  endpoint: "search" | "detail";
+  durationMs: number;
+  ok: boolean;
+  /** 业务码（见 SSOT 第 3 节）；-1 表示没拿到信封（网络错误、超时、取消）。 */
+  code?: number;
+  /** 上游 requestId，用于对账。 */
+  requestId?: string;
+  keyword?: string;
+  itemId?: string;
+  /**
+   * 调用方贴的上下文标签，原样回传。`cards.ts` 用它把一次调用归到发起它的那张卡片，
+   * 观测层据此把 `taobao.search` / `taobao.detail` 挂到所属 `taobao.card` 之下。
+   * 适配器不解释它的含义。
+   */
+  tag?: string;
 };
 
 export type TaobaoClientOptions = {
@@ -50,6 +80,8 @@ export type TaobaoClientOptions = {
   fetchImpl?: typeof fetch;
   /** 测试注入，默认读 process.env。 */
   env?: Record<string, string | undefined>;
+  /** 纯观测回调：每次上游调用（含重试）记一条。抛错不影响调用本身。 */
+  onCall?: (info: TaobaoCallInfo) => void;
 };
 
 /** 上游图片是协议相对地址（//img.alicdn.com/...），也可能给 http，统一补成 https。 */
@@ -98,10 +130,20 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
   const timeoutMs = Math.max(1, Number.isFinite(timeoutSeconds) ? timeoutSeconds : 30) * 1000;
   const configured = Boolean(token);
 
+  /** 观测是纯旁路：回调抛错只丢一条观测，不能让淘宝调用失败。 */
+  function report(info: TaobaoCallInfo): void {
+    try {
+      options.onCall?.(info);
+    } catch {
+      // 忽略。
+    }
+  }
+
   async function call(
     path: string,
     params: Record<string, string>,
-    signal?: AbortSignal
+    signal: AbortSignal | undefined,
+    descriptor: Pick<TaobaoCallInfo, "endpoint" | "keyword" | "itemId" | "tag">
   ): Promise<Record<string, unknown>> {
     if (!configured) throw new TaobaoApiError("淘宝 API 未配置 TAOBAO_API_TOKEN", { code: -1, retryable: false });
 
@@ -111,11 +153,15 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
 
     const timeout = AbortSignal.timeout(timeoutMs);
     const composedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const startedAt = performance.now();
+    const done = (ok: boolean, extra: { code?: number; requestId?: string } = {}) =>
+      report({ ...descriptor, durationMs: Math.round(performance.now() - startedAt), ok, ...extra });
 
     let response: Response;
     try {
       response = await fetchImpl(url, { method: "GET", headers: { accept: "application/json" }, signal: composedSignal });
     } catch (error) {
+      done(false, { code: -1 });
       throw new TaobaoApiError(`${path} ${errorLabel(error)}`, { code: -1, retryable: true });
     }
 
@@ -131,6 +177,7 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
     const code = typeof envelope.code === "number" ? envelope.code : -1;
     const requestId = typeof envelope.requestId === "string" ? envelope.requestId : undefined;
     if (code !== 0) {
+      done(false, { code, ...(requestId ? { requestId } : {}) });
       const message = typeof envelope.message === "string" && envelope.message ? `：${envelope.message}` : "";
       throw new TaobaoApiError(`${path} 业务失败 code=${code}${message}`, {
         code,
@@ -138,6 +185,7 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
         retryable: code === 301 || response.status >= 500
       });
     }
+    done(true, { code, ...(requestId ? { requestId } : {}) });
     return (envelope.data ?? {}) as Record<string, unknown>;
   }
 
@@ -150,7 +198,8 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
       const data = await call(
         SEARCH_PATH,
         { keyword, page: String(searchOptions.page ?? 1) },
-        searchOptions.signal
+        searchOptions.signal,
+        { endpoint: "search", keyword, ...(searchOptions.tag ? { tag: searchOptions.tag } : {}) }
       );
       const entries = Array.isArray(data.itemsArray) ? (data.itemsArray as unknown[]) : [];
       const items: TaobaoSearchItem[] = [];
@@ -177,7 +226,11 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
 
     async getItemDetail(itemId, detailOptions = {}) {
       if (!configured) return null;
-      const data = await call(DETAIL_PATH, { itemId: String(itemId) }, detailOptions.signal);
+      const data = await call(DETAIL_PATH, { itemId: String(itemId) }, detailOptions.signal, {
+        endpoint: "detail",
+        itemId: String(itemId),
+        ...(detailOptions.tag ? { tag: detailOptions.tag } : {})
+      });
       const images: string[] = [];
       if (Array.isArray(data.item_imgs)) {
         for (const raw of data.item_imgs as unknown[]) {

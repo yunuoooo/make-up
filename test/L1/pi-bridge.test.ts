@@ -10,8 +10,10 @@ import {
   resolvePiStateDir,
   resolveSkillEntry,
   resolveSkillPath,
+  runPiAgent,
   type PiBridgeOptions
 } from "../../lib/pi/bridge.ts";
+import { createPiEventMapper, type AppSseEvent } from "../../lib/pi/events.ts";
 
 function withEnv(name: string, value: string, run: () => void): void {
   const previous = process.env[name];
@@ -112,4 +114,89 @@ test("formats application events as parseable SSE blocks", () => {
     formatSseEvent({ event: "text_delta", data: { text: "你好" } }),
     'event: text_delta\ndata: {"text":"你好"}\n\n'
   );
+});
+
+test("gives SSE callers a duration for every finished call", () => {
+  const context = {
+    traceId: "trace_1",
+    agentRunId: "run_1",
+    conversationId: "conv_1",
+    messageId: "msg_1",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    systemPrompt: "只做只读小红书研究。",
+    userPrompt: "我想画韩系氧气妆"
+  };
+  let clock = 1_000;
+  const mapper = createPiEventMapper(context, { now: () => clock });
+
+  mapper.consume({ type: "message_start", message: { role: "assistant", model: "deepseek-chat" } });
+  clock += 2_400;
+  assert.equal((mapper.consume({ type: "message_end", message: { role: "assistant", content: [] } })[0].data as any).durationMs, 2_400);
+
+  mapper.consume({ type: "tool_execution_start", toolCallId: "call_1", toolName: "xhs_get_feed_detail", args: {} });
+  clock += 45_000;
+  const [finished] = mapper.consume({
+    type: "tool_execution_end",
+    toolCallId: "call_1",
+    toolName: "xhs_get_feed_detail",
+    result: { content: [{ type: "text", text: "The operation was aborted due to timeout" }] },
+    isError: true
+  });
+  assert.equal((finished.data as any).durationMs, 45_000);
+  // 45s 上限的那一簇和 4–16s 的成功簇，在过程区里一眼可分。
+  assert.equal((finished.data as any).status, "failed");
+
+  // 配不上对就不给数字：编一个 0 会被读成「瞬间完成」。
+  const [orphan] = mapper.consume({ type: "tool_execution_end", toolCallId: "ghost", toolName: "read", result: {}, isError: false });
+  assert.equal("durationMs" in (orphan.data as any), false);
+
+  // turn 的边界不给前端加事件类型（SSE 契约不变），但也必须显式处理、不落 default。
+  assert.deepEqual(mapper.consume({ type: "turn_start", turnIndex: 0, timestamp: 1 }), []);
+  assert.deepEqual(mapper.consume({ type: "turn_end", turnIndex: 0 }), []);
+});
+
+test("reports the run wall clock on the result event", async () => {
+  const events: AppSseEvent[] = [];
+  const result = await runPiAgent(
+    // 技能文件不存在：这条路径在 spawn 之前就返回，测试不启动任何进程。
+    { prompt: "我想画韩系氧气妆", skillPath: "/tmp/looktrace-missing-skill-for-test" },
+    (event) => void events.push(event)
+  );
+
+  assert.equal(result.status, "failed");
+  const resultEvent = events.find((event) => event.event === "result");
+  assert.ok(resultEvent);
+  const durationMs = (resultEvent.data as { durationMs?: unknown }).durationMs;
+  assert.equal(typeof durationMs, "number");
+  assert.ok((durationMs as number) >= 0, "result 要带上本次耗时");
+  // 失败原因照旧要透出，新增字段不能顶掉它。
+  assert.ok(events.some((event) => event.event === "error"));
+});
+
+test("finishes the round even when the observation sink throws", async () => {
+  const events: AppSseEvent[] = [];
+  const throwing = {
+    id: "boom",
+    runContext: { traceId: "trace_boom" },
+    update() {
+      throw new Error("sink exploded");
+    },
+    end() {
+      throw new Error("sink exploded");
+    },
+    startObservation(): never {
+      throw new Error("sink exploded");
+    }
+  };
+
+  const result = await runPiAgent({
+    prompt: "我想画韩系氧气妆",
+    skillPath: "/tmp/looktrace-missing-skill-for-test",
+    trace: throwing
+  }, (event) => void events.push(event));
+
+  // 观测炸了只丢观测：答案路径和状态一个字都不能变。
+  assert.equal(result.status, "failed");
+  assert.equal(events.filter((event) => event.event === "result").length, 1);
 });

@@ -3,6 +3,7 @@
 Status: Draft
 Date: 2026-09-04
 Related spec: [001-mvp.md](../specs/001-mvp.md)
+Revised: 2026-09-22 — 第 4.1 / 4.2 节的 span 名称与事件来源作废（Agent runtime 已从 OpenAI Agents SDK 换成 pi，见 [09-17-pi-skill-runtime.md](../specs/09-17-pi-skill-runtime.md)）；第 4.3 节「Langfuse 中只保存脱敏输入和摘要」的说法作废，改为保存脱敏后的全文。现行口径见 [09-22-langfuse-observability.md](../specs/09-22-langfuse-observability.md)
 
 ## 0. 实施目标
 
@@ -113,6 +114,8 @@ hydrate_taobao_offers
 
 ## 4. Langfuse 接入
 
+> **本节 4.1 / 4.2 已作废（2026-09-22）**：Agent 运行时不再是 OpenAI Agents SDK，pi 的 JSON 事件流才是观测的唯一事实来源。实际的 observation 树（`looktrace.chat.turn` / `pi.run` / `pi.turn.N` / `model_call.N` / 工具 / `taobao.cards`）、字段映射、耗时测量与降级规则全部以 [09-22-langfuse-observability.md](../specs/09-22-langfuse-observability.md) 为准，下面两小节只作历史记录保留。
+
 ### 4.1 Trace 生命周期
 
 - 请求进入时创建 `looktrace.chat.turn` trace。
@@ -148,7 +151,7 @@ hydrate_taobao_offers
 - 是否读取妆匣、命中多少产品、缺少多少能力。
 - 是否使用了 fallback 或 placeholder。
 
-Langfuse 中只保存脱敏输入和摘要；业务原文通过业务存储中的对象 ID 关联。
+Langfuse 中保存**脱敏后的全文**，不做摘要化，也不用业务存储的对象 ID 间接关联。阶段划分、字段映射与脱敏规则见 [09-22-langfuse-observability.md](../specs/09-22-langfuse-observability.md)。
 
 ## 5. 业务存储与关联
 

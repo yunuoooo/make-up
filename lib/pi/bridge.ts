@@ -1,15 +1,19 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import {
   createPiEventMapper,
+  extractAssistantText,
   parsePiJsonLine,
   redactSensitive,
   type AppSseEvent,
   type PiRunContext
 } from "./events.ts";
+import { createTurnCollector } from "../observability/collector.ts";
+import { flushObservability, includeContentEnabled } from "../observability/langfuse.ts";
+import type { TurnTrace } from "../observability/types.ts";
 
 export type PiBridgeOptions = {
   prompt: string;
@@ -21,6 +25,13 @@ export type PiBridgeOptions = {
   piBin?: string;
   cwd?: string;
   conversationId?: string;
+  /**
+   * 由调用方预生成，好让观测层在 spawn 之前就建好根 trace。
+   * 不传则自行生成（单独用 bridge 时用得上）。
+   */
+  traceId?: string;
+  /** 根 observation。为 null / 省略表示本轮不上报。 */
+  trace?: TurnTrace | null;
   signal?: AbortSignal;
 };
 
@@ -95,8 +106,18 @@ export function formatSseEvent(event: AppSseEvent): string {
   return `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
 }
 
+/** 观测调用一律不许冒泡进请求路径：抛错只丢观测数据，不改任何产品行为。 */
+function safely<T>(operation: () => T): T | null {
+  try {
+    return operation();
+  } catch {
+    return null;
+  }
+}
+
 export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): Promise<PiBridgeResult> {
-  const traceId = `trace_${randomUUID()}`;
+  const startedAt = Date.now();
+  const traceId = options.traceId ?? `trace_${randomUUID()}`;
   const agentRunId = `pi_${randomUUID()}`;
   const conversationId = options.conversationId ?? `conv_${randomUUID()}`;
   const messageId = `msg_${randomUUID()}`;
@@ -114,6 +135,34 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
     userPrompt: options.prompt
   };
 
+  const skillPath = resolveSkillPath(options);
+  const trace = options.trace ?? null;
+  // pi.run 在 spawn **之前**开出：它到进程 close 的宽度就是真正的进程墙钟（6.3）。
+  // 观测调用一律走 safely：任何一个 observation 抛错都不能冒泡进请求路径。
+  const run = safely(() => trace?.startObservation("pi.run", {
+    metadata: {
+      agentRunId,
+      conversationId,
+      messageId,
+      provider,
+      model,
+      skillPath,
+      // 完整系统提示词不进 trace：静态、每次一样、又长。哈希用来确认版本变了。
+      systemPromptHash: createHash("sha256").update(systemPrompt).digest("hex").slice(0, 12),
+      systemPromptLength: systemPrompt.length
+    }
+  }, "agent")) ?? null;
+  // 前端拿到的是 trace_<uuid>，把同一批 id 也挂到根上，便于按会话回查。
+  safely(() => trace?.update({ metadata: { agentRunId, conversationId, messageId, provider, model } }));
+
+  const collector = createTurnCollector(trace, {
+    includeContent: includeContentEnabled(),
+    run,
+    flush: flushObservability,
+    provider,
+    model
+  });
+
   const mapper = createPiEventMapper(context);
   let answerText = "";
   let finalMessageText = "";
@@ -121,7 +170,26 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
   let spawnError: Error | null = null;
   let child: ChildProcess;
 
-  const skillPath = resolveSkillPath(options);
+  const finish = async (result: PiBridgeResult, errorMessage?: string): Promise<PiBridgeResult> => {
+    const settled: PiBridgeResult = { ...result, answerText: redactSensitive(result.answerText) };
+    if (errorMessage && settled.status === "failed") {
+      await sink({ event: "error", data: { message: errorMessage, runtime: "pi", traceId: settled.run.traceId } });
+    }
+    await sink({
+      event: "result",
+      data: {
+        answerText: settled.answerText || (settled.status === "cancelled" ? "本轮已取消。" : "Pi 没有返回文本。"),
+        status: settled.status,
+        run: settled.run,
+        durationMs: Date.now() - startedAt,
+        runtime: { engine: "pi", provider: settled.provider, model: settled.model, exitCode: settled.exitCode }
+      }
+    });
+    // 收尾放在 result 之后：用户先拿到答案，再等尾批推出去。
+    await collector.finish(settled.status);
+    return settled;
+  };
+
   await sink({
     event: "status",
     data: {
@@ -144,7 +212,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       provider,
       model,
       exitCode: null
-    }, sink);
+    });
   }
 
   try {
@@ -157,7 +225,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       provider,
       model,
       exitCode: null
-    }, sink, `未找到技能文件 ${resolveSkillEntry(skillPath)}；Pi Agent 的行为由技能决定，缺失时不回退到系统提示词。`);
+    }, `未找到技能文件 ${resolveSkillEntry(skillPath)}；Pi Agent 的行为由技能决定，缺失时不回退到系统提示词。`);
   }
 
   const cwd = options.cwd ?? process.cwd();
@@ -172,7 +240,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       provider,
       model,
       exitCode: null
-    }, sink, `未找到 pi 可执行文件 ${piBin}；请先运行 npm install（pi 是本项目的依赖），或用 PI_BIN 指定路径。`);
+    }, `未找到 pi 可执行文件 ${piBin}；请先运行 npm install（pi 是本项目的依赖），或用 PI_BIN 指定路径。`);
   }
 
   const stateDir = resolvePiStateDir(cwd);
@@ -193,7 +261,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       provider,
       model,
       exitCode: null
-    }, sink, spawnError.message);
+    }, spawnError.message);
   }
 
   const abortHandler = () => {
@@ -220,9 +288,12 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
         answerText += String(redactSensitive(parsed.assistantMessageEvent.delta ?? ""));
       }
       if (parsed.type === "message_end" && parsed.message?.role === "assistant") {
-        finalMessageText = redactSensitive(extractText(parsed.message.content)) || finalMessageText;
+        finalMessageText = redactSensitive(extractAssistantText(parsed.message.content)) || finalMessageText;
       }
 
+      // 观测与 SSE 并行消费同一个（已脱敏的）事件流：SSE 是给前端的投影，信息有损，
+      // 观测要的是原始事件本身。
+      collector.consume(parsed);
       for (const event of mapper.consume(parsed)) await sink(event);
     }
   } finally {
@@ -240,7 +311,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       provider,
       model,
       exitCode
-    }, sink, runtimeError.message);
+    }, runtimeError.message);
   }
 
   return finish({
@@ -250,33 +321,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
     provider,
     model,
     exitCode
-  }, sink, exitCode === 0 || cancelled ? undefined : `Pi 进程退出码：${exitCode}`);
-}
-
-async function finish(result: PiBridgeResult, sink: PiEventSink, errorMessage?: string): Promise<PiBridgeResult> {
-  result = { ...result, answerText: redactSensitive(result.answerText) };
-  if (errorMessage && result.status === "failed") {
-    await sink({ event: "error", data: { message: errorMessage, runtime: "pi", traceId: result.run.traceId } });
-  }
-  await sink({
-    event: "result",
-    data: {
-      answerText: result.answerText || (result.status === "cancelled" ? "本轮已取消。" : "Pi 没有返回文本。"),
-      status: result.status,
-      run: result.run,
-      runtime: { engine: "pi", provider: result.provider, model: result.model, exitCode: result.exitCode }
-    }
-  });
-  return result;
-}
-
-function extractText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((item): item is { type: string; text?: string } => Boolean(item && typeof item === "object"))
-    .filter((item) => item.type === "text" && typeof item.text === "string")
-    .map((item) => item.text ?? "")
-    .join("");
+  }, exitCode === 0 || cancelled ? undefined : `Pi 进程退出码：${exitCode}`);
 }
 
 export { DEFAULT_SYSTEM_PROMPT };

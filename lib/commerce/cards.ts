@@ -56,6 +56,16 @@ export function pickSearchItem(items: TaobaoSearchItem[], brand: string): Taobao
   return pool[0];
 }
 
+/** 单张卡片的结局，供观测层开合一条 `taobao.card`。 */
+export type ProductCardRun = {
+  ref: ProductRef;
+  ok: boolean;
+  cacheHit: boolean;
+  /** 详情层还是搜索回退；失败时没有值。回退率就是从这里统计的。 */
+  detailLevel?: "detail" | "search";
+  reason?: string;
+};
+
 export type BuildProductCardsOptions = {
   client: TaobaoClient;
   limit?: number;
@@ -66,6 +76,12 @@ export type BuildProductCardsOptions = {
   now?: () => number;
   /** 每解析出一张就回调一次，调用方据此渐进式推事件。 */
   onCard?: (card: ProductCard) => void | Promise<void>;
+  /**
+   * 观测挂钩：一张卡片进入 / 离开补全流程各回调一次，**在 `handle(ref)` 之外**。
+   * 纯旁路，抛错不影响结果；没开观测时完全没有开销。
+   */
+  onCardStart?: (ref: ProductRef) => void;
+  onCardFinish?: (run: ProductCardRun) => void;
 };
 
 export type ProductCardsOutcome = {
@@ -157,31 +173,53 @@ export async function buildProductCards(
     failed.push({ brand: ref.brand, name: ref.name, reason });
   };
 
+  /** 观测回调是纯旁路：抛错只丢一条观测，不能影响卡片产出。 */
+  const report = (run: ProductCardRun) => {
+    try {
+      options.onCardFinish?.(run);
+    } catch {
+      // 忽略。
+    }
+  };
+
+  const reportStart = (ref: ProductRef) => {
+    try {
+      options.onCardStart?.(ref);
+    } catch {
+      // 忽略。
+    }
+  };
+
   async function handle(ref: ProductRef): Promise<void> {
     const key = productKey(ref);
     const cached = options.cache?.get(key);
     if (cached) {
       cards.push(cached);
       await options.onCard?.(cached);
+      report({ ref, ok: true, cacheHit: true, detailLevel: cached.detailLevel });
       return;
     }
 
     const keyword = buildSearchKeyword(ref);
     if (!keyword) {
       fail(ref, "商品名不完整");
+      report({ ref, ok: false, cacheHit: false, reason: "商品名不完整" });
       return;
     }
 
-    const found = await withRetry(() => options.client.searchItems(keyword, { page: 1, signal: options.signal }));
+    // tag 把这次调用归到发起它的那张卡片：并发是 2，观测层靠它才能把
+    // taobao.search / taobao.detail 挂到**所属**卡片之下，而不是整批之下。
+    const found = await withRetry(() => options.client.searchItems(keyword, { page: 1, signal: options.signal, tag: key }));
     const picked = pickSearchItem(found, ref.brand);
     if (!picked) {
       fail(ref, "淘宝没有搜到可用商品");
+      report({ ref, ok: false, cacheHit: false, reason: "淘宝没有搜到可用商品" });
       return;
     }
 
     let detail: TaobaoItemDetail | null = null;
     try {
-      detail = await withRetry(() => options.client.getItemDetail(picked.numIid, { signal: options.signal }));
+      detail = await withRetry(() => options.client.getItemDetail(picked.numIid, { signal: options.signal, tag: key }));
     } catch (error) {
       if (isFatal(error)) throw error;
       // 详情失败/超时：回退搜索结果的图与拼出的详情页，不算整件失败。
@@ -191,6 +229,7 @@ export async function buildProductCards(
     cards.push(card);
     options.cache?.set(key, card);
     await options.onCard?.(card);
+    report({ ref, ok: true, cacheHit: false, detailLevel: card.detailLevel });
   }
 
   async function worker(): Promise<void> {
@@ -205,15 +244,20 @@ export async function buildProductCards(
         fail(ref, "超出本轮淘宝查询预算");
         continue;
       }
+      reportStart(ref);
       try {
         await handle(ref);
       } catch (error) {
+        // 抛出只可能是配额/凭据这类致命错；软失败已经在 handle 里就地报告过了，
+        // 所以这里不会重复报告同一张卡片。
         if (isFatal(error)) {
           stopReason = fatalReason(error);
           fail(ref, stopReason);
-          continue;
+        } else {
+          fail(ref, failureReason(error));
         }
-        fail(ref, failureReason(error));
+        report({ ref, ok: false, cacheHit: false, reason: stopReason ?? failureReason(error) });
+        continue;
       }
     }
   }

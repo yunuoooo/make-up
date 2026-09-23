@@ -5,9 +5,10 @@ import {
   buildProductCards,
   buildSearchKeyword,
   itemUrl,
-  pickSearchItem
+  pickSearchItem,
+  type ProductCardRun
 } from "../../lib/commerce/cards.ts";
-import { TaobaoApiError, createTaobaoClient } from "../../lib/commerce/taobao.ts";
+import { TaobaoApiError, createTaobaoClient, type TaobaoCallInfo } from "../../lib/commerce/taobao.ts";
 import { productKey } from "../../lib/commerce/product-block.ts";
 import type { ProductCard, ProductRef, TaobaoSearchItem } from "../../lib/commerce/types.ts";
 
@@ -341,4 +342,179 @@ test("条数上限：超出的商品不处理", async () => {
 
   assert.equal(outcome.cards.length, 2);
   assert.equal(searchCalls, 2);
+});
+
+test("观测回调：search/detail 各一条，字段与失败码正确，且记录里不含 URL", async () => {
+  const fixtures_ = await fixtures();
+  const calls: TaobaoCallInfo[] = [];
+  const { fetchImpl } = stubFetch({
+    search: (url) => {
+      // 失败码与成功各来一次：同一个 keyword 第一次配额不足，第二次正常返回。
+      return url.searchParams.get("keyword") === "失败商品"
+        ? { body: { code: 303, message: "超出每日配额", requestId: "req_quota", data: null } }
+        : { body: fixtures_.search };
+    },
+    detail: () => ({ body: fixtures_.detail })
+  });
+  const client = createTaobaoClient({ fetchImpl, env, onCall: (info) => calls.push(info) });
+
+  await client.searchItems("橘朵腮红", { page: 1 });
+  await client.getItemDetail(DETAIL_ITEM_ID);
+  await assert.rejects(() => client.searchItems("失败商品"));
+
+  assert.equal(calls.length, 3);
+  const [search, detail, failed] = calls;
+
+  assert.equal(search.endpoint, "search");
+  assert.equal(search.ok, true);
+  assert.equal(search.code, 0);
+  assert.equal(search.keyword, "橘朵腮红");
+  assert.equal(search.itemId, undefined);
+  assert.ok(search.durationMs >= 0, "耗时要落成一个真实测得的毫秒数");
+
+  assert.equal(detail.endpoint, "detail");
+  assert.equal(detail.ok, true);
+  assert.equal(detail.itemId, DETAIL_ITEM_ID);
+  assert.equal(detail.keyword, undefined);
+
+  // 45s 客户端超时与服务端 context deadline exceeded 是两件事，业务码要落下来。
+  assert.equal(failed.endpoint, "search");
+  assert.equal(failed.ok, false);
+  assert.equal(failed.code, 303);
+  assert.equal(failed.requestId, "req_quota");
+  assert.equal(failed.keyword, "失败商品");
+
+  // token 走 query 参数，URL 永远不进观测数据。
+  const handed = JSON.stringify(calls);
+  assert.equal(handed.includes("test-token-1234"), false, "观测记录里不能出现 token");
+  assert.equal(handed.includes("justoneapi"), false, "观测记录里不能出现请求 URL");
+  assert.equal(handed.includes("http"), false, "观测记录里不能出现任何 URL");
+});
+
+test("观测回调抛错不影响淘宝调用", async () => {
+  const search = (await fixtures()).search;
+  const { fetchImpl } = stubFetch({ search: () => ({ body: search }) });
+  const client = createTaobaoClient({
+    fetchImpl,
+    env,
+    onCall: () => {
+      throw new Error("观测炸了");
+    }
+  });
+
+  const items = await client.searchItems("橘朵腮红");
+  assert.ok(items.length > 0, "观测回调抛错只丢一条观测，不能改变调用结果");
+});
+
+test("卡片挂钩：每件各一次 start/finish，回退与失败都带原因", async () => {
+  const fixtures_ = await fixtures();
+  const { fetchImpl } = stubFetch({
+    search: (url) => (url.searchParams.get("keyword")?.startsWith("断货") ? { body: { code: 0, data: { itemsArray: [] } } } : { body: fixtures_.search }),
+    detail: () => ({ body: { code: 0, data: {} } })
+  });
+  const started: ProductRef[] = [];
+  const finished: ProductCardRun[] = [];
+  const missing: ProductRef = { category: "口红", brand: "断货", name: "不存在", section: "optional" };
+
+  const outcome = await buildProductCards([ref, missing], {
+    client: createTaobaoClient({ fetchImpl, env }),
+    onCardStart: (item) => started.push(item),
+    onCardFinish: (run) => finished.push(run)
+  });
+
+  assert.deepEqual(started, [ref, missing]);
+  const ok = finished.find((run) => run.ref === ref);
+  const bad = finished.find((run) => run.ref === missing);
+  // 详情 fixture 里没有可用字段 → 回退搜索层；这正是从前那条隐性失败。
+  assert.equal(ok?.ok, true);
+  assert.equal(ok?.cacheHit, false);
+  assert.equal(ok?.detailLevel, "search");
+  assert.equal(bad?.ok, false);
+  assert.equal(bad?.reason, "淘宝没有搜到可用商品");
+  assert.equal(outcome.status, "partial");
+});
+
+test("卡片挂钩：缓存命中与致命错都各报告一次", async () => {
+  const cached: ProductCard = {
+    id: productKey(ref),
+    category: ref.category,
+    brand: ref.brand,
+    name: ref.name,
+    shade: ref.shade,
+    section: ref.section,
+    title: "缓存里的商品",
+    purchaseUrl: "https://item.taobao.com/item.htm?id=1",
+    detailLevel: "detail"
+  };
+  const store = new Map([[productKey(ref), cached]]);
+  const { fetchImpl } = stubFetch({});
+  const hits: ProductCardRun[] = [];
+  await buildProductCards([ref], {
+    client: createTaobaoClient({ fetchImpl, env }),
+    cache: { get: (key) => store.get(key), set: (key, card) => void store.set(key, card) },
+    onCardStart: () => {
+      throw new Error("观测炸了");
+    },
+    onCardFinish: (run) => hits.push(run)
+  });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].cacheHit, true);
+  assert.equal(hits[0].detailLevel, "detail");
+
+  // 致命错从 handle 抛出：start 与 finish 仍然配对，不会留下悬空观测。
+  const fatal: ProductRef[] = [{ category: "腮红", brand: "橘朵", name: "单色腮红", section: "necessary" }];
+  const { fetchImpl: quotaFetch } = stubFetch({
+    search: () => ({ body: { code: 303, message: "超出每日配额", data: null } })
+  });
+  const events: string[] = [];
+  const outcome = await buildProductCards(fatal, {
+    client: createTaobaoClient({ fetchImpl: quotaFetch, env }),
+    onCardStart: () => void events.push("start"),
+    onCardFinish: (run) => void events.push(`finish:${run.ok}:${run.reason}`)
+  });
+  assert.deepEqual(events, ["start", "finish:false:淘宝查询额度受限"]);
+  assert.equal(outcome.status, "unavailable");
+});
+
+test("上游调用带上卡片 tag，观测层才能把它挂到所属卡片之下", async () => {
+  const fixtures_ = await fixtures();
+  const calls: TaobaoCallInfo[] = [];
+  const { fetchImpl } = stubFetch({
+    search: (url) => (url.searchParams.get("keyword")?.startsWith("断货") ? { body: { code: 0, data: { itemsArray: [] } } } : { body: fixtures_.search }),
+    detail: () => ({ body: fixtures_.detail })
+  });
+  const client = createTaobaoClient({ fetchImpl, env, onCall: (info) => calls.push(info) });
+  const other: ProductRef = { category: "口红", brand: "断货", name: "不存在", section: "optional" };
+
+  await buildProductCards([ref, other], { client });
+
+  const mine = calls.filter((call) => call.tag === productKey(ref));
+  const theirs = calls.filter((call) => call.tag === productKey(other));
+  // 并发是 2：两个卡片各自的上游调用必须能区分开，否则观测只能挂在整批之下。
+  assert.deepEqual(mine.map((call) => call.endpoint), ["search", "detail"]);
+  assert.deepEqual(theirs.map((call) => call.endpoint), ["search"]);
+  assert.notEqual(productKey(ref), productKey(other));
+  assert.ok(calls.every((call) => call.tag), "每次上游调用都要带上 tag");
+});
+
+test("缓存命中不发请求，也就不产生 tag 记录", async () => {
+  const cached: ProductCard = {
+    id: productKey(ref),
+    category: ref.category,
+    brand: ref.brand,
+    name: ref.name,
+    shade: ref.shade,
+    section: ref.section,
+    title: "缓存里的商品",
+    purchaseUrl: "https://item.taobao.com/item.htm?id=1",
+    detailLevel: "detail"
+  };
+  const store = new Map([[productKey(ref), cached]]);
+  const { fetchImpl } = stubFetch({});
+  const calls: TaobaoCallInfo[] = [];
+  await buildProductCards([ref], {
+    client: createTaobaoClient({ fetchImpl, env, onCall: (info) => calls.push(info) }),
+    cache: { get: (key) => store.get(key), set: (key, card) => void store.set(key, card) }
+  });
+  assert.deepEqual(calls, []);
 });

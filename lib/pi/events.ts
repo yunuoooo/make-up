@@ -26,9 +26,22 @@ export function parsePiJsonLine(line: string): PiEvent | null {
   }
 }
 
-export function createPiEventMapper(context: PiRunContext) {
+export type PiEventMapperOptions = {
+  /** 测试注入时钟；默认墙钟。 */
+  now?: () => number;
+};
+
+export function createPiEventMapper(context: PiRunContext, options: PiEventMapperOptions = {}) {
+  const now = options.now ?? (() => Date.now());
   let callIndex = 0;
   let lastUsageKey = "";
+  let modelCallStartedAt: number | null = null;
+  // 工具耗时只能在 bridge 边界测墙钟：pi 的 tool_execution_end 不带时长字段。
+  const toolStartedAt = new Map<string, number>();
+
+  /** 配对成功才算时长；配不上对就不给数字，避免编一个看起来像实测的值。 */
+  const elapsed = (startedAt: number | null | undefined): number | undefined =>
+    startedAt === null || startedAt === undefined ? undefined : Math.max(0, Math.round(now() - startedAt));
 
   return {
     consume(event: PiEvent): AppSseEvent[] {
@@ -36,6 +49,7 @@ export function createPiEventMapper(context: PiRunContext) {
         case "message_start":
           if (event.message?.role !== "assistant") return [];
           callIndex += 1;
+          modelCallStartedAt = now();
           return [{
             event: "model_call_started",
             data: {
@@ -92,11 +106,13 @@ export function createPiEventMapper(context: PiRunContext) {
               provider: event.message.provider ?? context.provider,
               model: event.message.model ?? context.model,
               stopReason: event.message.stopReason ?? null,
-              usage: usageData(event.message.usage)
+              usage: usageData(event.message.usage),
+              ...durationField(elapsed(modelCallStartedAt))
             }
           }];
 
         case "tool_execution_start":
+          if (typeof event.toolCallId === "string") toolStartedAt.set(event.toolCallId, now());
           return [{
             event: "tool_started",
             data: {
@@ -107,7 +123,9 @@ export function createPiEventMapper(context: PiRunContext) {
             }
           }];
 
-        case "tool_execution_end":
+        case "tool_execution_end": {
+          const startedAt = typeof event.toolCallId === "string" ? toolStartedAt.get(event.toolCallId) : undefined;
+          if (typeof event.toolCallId === "string") toolStartedAt.delete(event.toolCallId);
           return [{
             event: "tool_finished",
             data: {
@@ -115,20 +133,50 @@ export function createPiEventMapper(context: PiRunContext) {
               toolName: event.toolName,
               status: event.isError ? "failed" : "succeeded",
               summary: summarizeToolResult(event.toolName, event.result, event.isError),
-              resultPreview: preview(event.result)
+              resultPreview: preview(event.result),
+              ...durationField(elapsed(startedAt))
             }
           }];
+        }
 
         case "agent_start":
           return [{ event: "status", data: { phase: "agent", message: "Pi Agent 已启动" } }];
         case "agent_end":
         case "agent_settled":
           return [{ event: "status", data: { phase: "agent", message: "Pi Agent 已完成推理" } }];
+        // turn 的边界不给前端加事件类型（SSE 契约不变），但必须显式处理、
+        // 不落 default：观测侧靠它切成 pi.turn.N，落 default 就等于把它丢了。
+        case "turn_start":
+        case "turn_end":
+          return [];
         default:
           return [];
       }
     }
   };
+}
+
+/** 配不出时长时整个字段不出现，而不是给 0——0 会被读成「瞬间完成」。 */
+function durationField(durationMs: number | undefined): { durationMs: number } | Record<string, never> {
+  return durationMs === undefined ? {} : { durationMs };
+}
+
+/** 助手正文全文（按 content block 拼接 text 部分）。 */
+export function extractAssistantText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((item): item is { type: string; text?: string } => Boolean(item && typeof item === "object"))
+    .filter((item) => item.type === "text" && typeof item.text === "string")
+    .map((item) => item.text ?? "")
+    .join("");
+}
+
+/** 一次模型调用产出的 toolCall 列表；args 已由 parsePiJsonLine 脱敏。 */
+export function extractToolCalls(content: unknown): Array<{ id: unknown; name: unknown; arguments: unknown }> {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((item): item is Record<string, any> => Boolean(item && typeof item === "object" && item.type === "toolCall"))
+    .map((item) => ({ id: item.id, name: item.name, arguments: item.arguments ?? {} }));
 }
 
 function fileName(value: unknown): string {
