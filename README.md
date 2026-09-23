@@ -90,7 +90,8 @@ npm run dev            # http://localhost:3000
 | `npm run typecheck` | 类型检查 |
 | `npm test` / `npm run test:l1` | 快速测试 |
 | `npm run test:l3` | 端到端测试（会跑真实 pi 进程，需 `RUN_L3_E2E=1`） |
-| `npm run xhs:login` | 扫码登录小红书 |
+| `./scripts/deploy.sh` | 部署（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启）；先跑 `DEPLOY_DRY_RUN=1 ./scripts/deploy.sh` 体检 |
+| `npm run xhs:login` | 扫码登录小红书（**仅 macOS 回退路径**；Linux 上仓库没有对应二进制） |
 | `npm run xhs:mcp` | 前台启动本地 MCP 服务（排查用；日常不需要） |
 
 ## 已知限制

@@ -11,7 +11,7 @@
 - `xiaohongshu-makeup-advisor-latest/`：妆容顾问技能，Agent 的行为来源（`SKILL.md` + `references/`）。
 - `xiaohongshu-mcp/`：小红书 MCP 服务（上游检出 + `bin/` 下的预编译二进制）。**迁移期回退路径**，切到 api 后删除。
 - `.pi/extensions/`：把小红书数据源注册为 pi 只读工具 `xhs_*` 的扩展。工具名与数据源解耦，`XHS_SOURCE_MODE=api|mcp` 只换实现，不换工具名。
-- `scripts/`：xhs-mcp 的启动、登录和 launchd 安装脚本（迁移期，随 MCP 链路一起删除）。
+- `scripts/`：`deploy.sh` 是部署脚本（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启；`DEPLOY_DRY_RUN=1` 先体检）。其余是 xhs-mcp 的启动、登录和 launchd 安装脚本，属迁移期，随 MCP 链路一起删除——**Linux 上不要用它们**（仓库只带 darwin-arm64 的二进制）。
 - `test/L1/`、`test/L3/`：TypeScript 运行时测试。
 - `docs/specs/`、`docs/plan/`：产品规格和实现方案。`.next/`、`.local-data/` 用于生成文件或本地状态。
 
