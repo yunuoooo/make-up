@@ -1,6 +1,6 @@
 # 本地小红书 MCP
 
-> **迁移期文档（2026-09-24 起）**：取数正路已改为 Just One API（[09-24-xhs-api-integration.md](specs/09-24-xhs-api-integration.md)），本文描述的本地 MCP 服务是 `XHS_SOURCE_MODE=mcp` 的**回退路径**（默认值仍是它，直到 api 链路验收通过）。切默认并清账后，本文与 `xiaohongshu-mcp/`、`scripts/xhs-*` 一起删除。
+> **迁移期文档（2026-09-24 起）**：取数正路已是 **TikHub**（[09-24-xhs-api-integration.md](specs/09-24-xhs-api-integration.md) / [TikHub SSOT](specs/09-24-tikhub-xhs-ssot.md)），本文描述的本地 MCP 服务是 `XHS_SOURCE_MODE=mcp` 的**回退路径**（默认值仍是它，直到 api 链路验收通过）。切默认并清账后，本文与 `xiaohongshu-mcp/`、`scripts/xhs-*` 一起删除。
 
 本项目使用上游仓库 [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp)，固定在 `xiaohongshu-mcp/`，当前检出 v2.5.0。上游只发布预编译二进制，放在该仓库的 `bin/` 目录，按 `<os>-<arch>` 命名；脚本用 `uname` 自动选择，当前仓库内置 `darwin-arm64`。
 

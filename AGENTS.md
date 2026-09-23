@@ -6,7 +6,7 @@
 - `frontend/`：界面组件、hooks、浏览器端类型和全局样式。样式走 Tailwind v4 + shadcn/ui，设计 token 定义在 `frontend/styles/globals.css`；`frontend/components/ui/` 只放实际用到的 shadcn 原语，需要新增时按 `components.json` 的别名生成（`@/frontend/components`、`@/frontend/lib`）。
 - `lib/pi/`：Pi Agent 运行时桥接和事件映射，是 Agent 的唯一入口。
 - `lib/commerce/`：淘宝商品卡片链路（技能产出机器可读商品块 → 聚合中转适配器 → 卡片补全编排）。上游字段、错误码和超时规则以 `docs/specs/09-21-justoneapi-taobao-ssot.md` 为准，换供应商只改 `lib/commerce/taobao.ts`。
-- `lib/xhs/`：小红书取数。正路是 Just One API（`justoneapi.ts`），上游字段与错误码以 `docs/specs/09-24-justoneapi-xhs-ssot.md` 为准；`mcp-source.ts` 是迁移期的 MCP 回退传输，清账时删除。架构与改动面见 `docs/specs/09-24-xhs-api-integration.md`。
+- `lib/xhs/`：小红书取数。正路是 **TikHub**（`tikhub.ts`），上游字段、两层信封与计费陷阱以 `docs/specs/09-24-tikhub-xhs-ssot.md` 为准（**换过供应商：`09-24-justoneapi-xhs-ssot.md` 已作废**）；`mcp-source.ts` 是迁移期的 MCP 回退传输，清账时删除。架构与改动面见 `docs/specs/09-24-xhs-api-integration.md`。
 - `lib/storage/`、`lib/types/`：`.local-data/` 下的 JSON 存储和领域类型。
 - `xiaohongshu-makeup-advisor-latest/`：妆容顾问技能，Agent 的行为来源（`SKILL.md` + `references/`）。
 - `xiaohongshu-mcp/`：小红书 MCP 服务（上游检出 + `bin/` 下的预编译二进制）。**迁移期回退路径**，切到 api 后删除。
@@ -28,7 +28,7 @@
 
 ## 运行时依赖边界
 
-部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载。小红书取数默认走 Just One API（`XHS_SOURCE_MODE=api` 且 `XHS_API_TOKEN` 非空才发请求；token 为空或模式为 `mock` 时整条链路降级，不发请求也不伪装成真实来源）；迁移期回退路径是本地 MCP，xhs-mcp 二进制从 `xiaohongshu-mcp/bin/` 按 `<os>-<arch>` 选择。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH`、`XHS_MCP_BINARY` 可覆盖默认值。
+部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载。小红书取数走 **TikHub**（`XHS_SOURCE_MODE=api` 且 `XHS_API_TOKEN` 非空才发请求；token 为空或模式为 `mock` 时整条链路降级，不发请求也不伪装成真实来源），token 走请求头 `Authorization: Bearer`、不进 URL；迁移期回退路径是本地 MCP，xhs-mcp 二进制从 `xiaohongshu-mcp/bin/` 按 `<os>-<arch>` 选择——**仓库里目前只有 `darwin-arm64`**，Linux 上要用回退路径得自行放入对应二进制，否则直接用 api 模式（不需要任何二进制）。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH`、`XHS_MCP_BINARY` 可覆盖默认值。
 
 ## 编码风格与命名约定
 

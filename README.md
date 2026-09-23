@@ -1,6 +1,6 @@
 # 妆迹 looktrace
 
-小红书妆容研究 Agent。用户描述妆容需求，Agent 用 [Pi](https://github.com/earendil-works/pi-coding-agent) 运行时加载妆容顾问技能，通过小红书检索真实笔记（取数默认走本地 MCP，可切到 Just One API），输出妆容拆解表，并按需补全可购买的商品卡片。
+小红书妆容研究 Agent。用户描述妆容需求，Agent 用 [Pi](https://github.com/earendil-works/pi-coding-agent) 运行时加载妆容顾问技能，通过小红书检索真实笔记（取数默认走本地 MCP，可切到 TikHub API），输出妆容拆解表，并按需补全可购买的商品卡片。
 
 答案里的每个结论都要求有来源笔记和证据类型；商品卡片是可选链路（上游按次计费，默认关闭）。
 
@@ -110,7 +110,7 @@ app/                        Next.js App Router 页面与 API 路由
 frontend/                   界面组件、hooks、设计 token（Tailwind v4 + shadcn/ui）
 lib/pi/                     Pi 运行时桥接、事件映射与会话管理（Agent 的唯一入口）
 lib/commerce/               商品卡片链路：技能的商品块 → 上游适配器 → 卡片补全
-lib/xhs/                    小红书取数：Just One API 适配器（+ 迁移期的 MCP 回退传输）
+lib/xhs/                    小红书取数：TikHub 适配器（+ 迁移期的 MCP 回退传输）
 lib/observability/          Langfuse trace 采集
 lib/storage/ lib/types/     .local-data/ 下的 JSON 存储与领域类型
 xiaohongshu-makeup-advisor-latest/   妆容顾问技能（Agent 的行为来源）
