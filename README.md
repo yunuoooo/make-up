@@ -1,6 +1,6 @@
 # 妆迹 looktrace
 
-小红书妆容研究 Agent。用户描述妆容需求，Agent 用 [Pi](https://github.com/earendil-works/pi-coding-agent) 运行时加载妆容顾问技能，通过小红书 MCP 检索真实笔记，输出妆容拆解表，并按需补全可购买的商品卡片。
+小红书妆容研究 Agent。用户描述妆容需求，Agent 用 [Pi](https://github.com/earendil-works/pi-coding-agent) 运行时加载妆容顾问技能，通过小红书检索真实笔记（取数默认走本地 MCP，可切到 Just One API），输出妆容拆解表，并按需补全可购买的商品卡片。
 
 答案里的每个结论都要求有来源笔记和证据类型；商品卡片是可选链路（上游按次计费，默认关闭）。
 
@@ -15,7 +15,7 @@ npm run xhs:login      # 扫码登录小红书，只需一次
 npm run dev            # http://localhost:3000
 ```
 
-`npm run dev` 第一次真正调用小红书工具时，`.pi/extensions/xiaohongshu-mcp.ts` 会自动拉起本地 MCP 服务（`scripts/xhs-mcp-server`），不需要单独开一个终端。
+`npm run dev` 第一次真正调用小红书工具时，`.pi/extensions/xhs-source.ts` 会在 mcp 模式下自动拉起本地 MCP 服务（`scripts/xhs-mcp-server`），不需要单独开一个终端；切成 api 模式后就不需要这个服务了。
 
 ## 配置
 
@@ -31,11 +31,16 @@ npm run dev            # http://localhost:3000
 
 运行时路径一般不用改，需要时用 `PI_BIN` / `PI_CODING_AGENT_DIR` / `PI_SKILL_PATH` 覆盖。
 
-### 小红书 MCP
+### 小红书取数
+
+取数有两条链路，用 `XHS_SOURCE_MODE` 切换：`mcp`（默认，本机浏览器驱动的本地 MCP 服务）和 `api`（Just One API 的 HTTP 接口，**迁移中**，见 [09-24 集成方案](./docs/specs/09-24-xhs-api-integration.md)）。工具名两条链路共用，切换不需要改技能或提示词。
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `XHS_MCP_URL` | `http://127.0.0.1:18060/mcp` | 本地 MCP 端点 |
+| `XHS_SOURCE_MODE` | `mcp` | `api` / `mcp`；其它值按「没有数据源」降级 |
+| `XHS_API_TOKEN` | 空 | Just One API 的 token。为空即未配置：不发请求，答案会说明本轮没有实时站内检索 |
+| `XHS_API_DETAIL_LIMIT` | `6` | 一轮读几篇正文——**唯一的省钱杠杆**（逐次计费） |
+| `XHS_MCP_URL` | `http://127.0.0.1:18060/mcp` | 本地 MCP 端点（mcp 模式） |
 | `XHS_MCP_AUTH_TOKEN` | 空 | 需要时给本地服务加 Bearer 鉴权 |
 | `XHS_MCP_REQUEST_TIMEOUT_SECONDS` | `45` | 单次工具调用超时 |
 | `XHS_MCP_PORT` | `18060` | 服务端口 |
@@ -43,9 +48,9 @@ npm run dev            # http://localhost:3000
 
 二进制默认按 `<os>-<arch>` 从 `xiaohongshu-mcp/bin/` 选，可用 `XHS_PLATFORM` / `XHS_MCP_BINARY` / `XHS_LOGIN_BINARY` / `XHS_DATA_DIR` 覆盖。
 
-> **搜索可能被风控拦到安全验证页**，此时每次搜索都会等满 60 秒才失败，需要在手机 App 上扫码验证才能解除。根因、证据与缓解见 [09-07 第 13 节](./docs/specs/09-07-xhs-mcp-integration.md)。
+> **搜索可能被风控拦到安全验证页**，此时每次搜索都会等满 60 秒才失败，需要在手机 App 上扫码验证才能解除。根因、证据与缓解见 [09-07 第 13 节](./docs/specs/09-07-xhs-mcp-integration.md)。（api 链路没有这个问题——没有浏览器、没有登录态。）
 >
-> **视频笔记的详情必然超时**（上游缺陷），已在工具层拦截。见 [09-07 第 12 节](./docs/specs/09-07-xhs-mcp-integration.md)。
+> **视频笔记的详情必然超时**（上游缺陷，只影响 mcp 模式），已在工具层拦截。见 [09-07 第 12 节](./docs/specs/09-07-xhs-mcp-integration.md)。
 
 ### 淘宝商品卡片（默认关）
 
@@ -105,11 +110,12 @@ app/                        Next.js App Router 页面与 API 路由
 frontend/                   界面组件、hooks、设计 token（Tailwind v4 + shadcn/ui）
 lib/pi/                     Pi 运行时桥接、事件映射与会话管理（Agent 的唯一入口）
 lib/commerce/               商品卡片链路：技能的商品块 → 上游适配器 → 卡片补全
+lib/xhs/                    小红书取数：Just One API 适配器（+ 迁移期的 MCP 回退传输）
 lib/observability/          Langfuse trace 采集
 lib/storage/ lib/types/     .local-data/ 下的 JSON 存储与领域类型
 xiaohongshu-makeup-advisor-latest/   妆容顾问技能（Agent 的行为来源）
-xiaohongshu-mcp/            小红书 MCP 服务（上游检出 + bin/ 预编译二进制）
-.pi/extensions/             把 MCP 注册为只读工具 xhs_* 的扩展
+xiaohongshu-mcp/            小红书 MCP 服务（迁移期回退路径，上游检出 + bin/ 预编译二进制）
+.pi/extensions/             把小红书数据源注册为只读工具 xhs_* 的扩展
 docs/specs/ docs/plan/      产品规格与实现方案
 ```
 
@@ -117,7 +123,8 @@ docs/specs/ docs/plan/      产品规格与实现方案
 
 改动前先读对应的 spec，实现与 spec 冲突时以 spec 为准：
 
-- [09-07 小红书 MCP 接入](./docs/specs/09-07-xhs-mcp-integration.md)（含第 12/13 节的上游缺陷记录）
+- [09-07 小红书 MCP 接入](./docs/specs/09-07-xhs-mcp-integration.md)（**已被 09-24 取代**；第 12/13 节的上游缺陷记录保留）
+- [09-24 小红书取数切换到 Just One API](./docs/specs/09-24-xhs-api-integration.md) 与 [上游接口 SSOT](./docs/specs/09-24-justoneapi-xhs-ssot.md)
 - [09-17 Pi Agent 技能驱动运行时](./docs/specs/09-17-pi-skill-runtime.md)
 - [09-21 淘宝商品卡片](./docs/specs/09-21-taobao-product-cards.md) 与 [上游接口 SSOT](./docs/specs/09-21-justoneapi-taobao-ssot.md)
 - [09-22 Langfuse 全链路观测](./docs/specs/09-22-langfuse-observability.md)
