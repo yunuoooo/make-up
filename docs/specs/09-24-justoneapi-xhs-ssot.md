@@ -1,5 +1,7 @@
 # Just One API 小红书接口 SSOT
 
+Status: **已作废（2026-09-24）**——xhs 链路已换成 TikHub（[09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)）。作废原因：Just One 的详情对图文笔记也返回 `code=0` + 空 `data`（实测 7/7），TikHub 对同一篇能拿到全文。本文保留为换供应商的依据与字段对照；**淘宝链路仍在使用 Just One**，那份 SSOT 是 [09-21-justoneapi-taobao-ssot.md](./09-21-justoneapi-taobao-ssot.md)。
+
 Status: 已按供应商文档 + **真实响应样例**（`synthetic: false`，未消耗 token）核对；延迟、配额与链接可达性见第 15 节待实测
 Date: 2026-09-24
 Related specs: [09-07-xhs-mcp-integration.md](./09-07-xhs-mcp-integration.md)（本次要替换的取数链路） · [09-21-justoneapi-taobao-ssot.md](./09-21-justoneapi-taobao-ssot.md)（同平台、本文体例参照） · [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md)
@@ -53,7 +55,7 @@ GET {BASE}/api/xiaohongshu/search-note/v4?token={TOKEN}&keyword={关键词}&page
 
 文档注明这是**移动应用版本**的搜索流程，「搜索结果更准确」。
 
-**`noteType=NORMAL_NOTE` 是一条可以直接用的过滤条件**：MCP 链路里「视频笔记的详情必然超时」（[09-07 第 12 节](./09-07-xhs-mcp-integration.md)）花了大量力气在工具层拦截，这里换成服务端过滤。取舍见第 13 节。
+**`noteType=NORMAL_NOTE` 是一条可以直接用的过滤条件**：MCP 链路里「视频笔记的详情必然超时」（[09-07 第 12 节](./09-07-xhs-mcp-integration.md)）花了大量力气在工具层拦截，这里换成服务端过滤。取舍见第 13 节。**现已采用**：v1 的检索固定传 `NORMAL_NOTE`（见 [集成本文](./09-24-xhs-api-integration.md) 决策 11）——理由不再是「视频详情会超时」，而是视频笔记在本链路里只有封面、给不出完成妆画面。
 
 ### 2.2 笔记详情 V6
 
@@ -184,7 +186,7 @@ HTTP 层另有 `400 / 401 / 403 / 429 / 500 / 503`，与业务码并存，**判�
 
 | 上游字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `id` | string | 笔记 ID |
+| `id` | string | 笔记 ID。**样例里有，但文档没保证**（OpenAPI 把 `data` 标成无类型 `{}`）：2026-09-24 线上出现过响应缺 `id` 的情况，映射层因此必须用**请求参数兜底**，并且再认 `note_id` / `noteId` 两个键名——缺 id 就把整篇丢掉是错的，见集成本文第 3.3 节 |
 | `title` | string | 标题 |
 | `desc` | string | **正文全文**，话题以内联文本形式出现（`#话题名[话题]#`） |
 | `type` | string | `normal`／`video` |
@@ -301,7 +303,7 @@ https://sns-na-i4.xhscdn.com/{fileid}?imageView2/2/w/608/format/heif/q/56|imageM
 | 我方单请求超时 | 60s（`XHS_API_TIMEOUT_SECONDS`） | 先取文档下限；**HTTP 调用的真实延迟待实测**（第 15 节第 2 条），实测后按 P95 收紧 |
 | 我方整批预算 | 60s（`XHS_API_BUDGET_SECONDS`） | 到期即停止后续请求，已拿到的笔记照发 |
 | 分页 | 搜索 `page` 从 1 开始（一篇 20 条）；评论 `lastCursor` ← 响应 `cursor` | — |
-| 重试 | 仅 `code=301`、HTTP 5xx 和网络超时各重试 1 次 | `302/303/601/602` 重试只会继续烧配额和余额 |
+| 重试 | `code=301`、HTTP 5xx、网络超时各重试 1 次；**外加 `code=0` 但 `data` 为空** | `302/303/601/602` 重试只会继续烧配额和余额。空 `data` 值得重试是因为**失败不计费**（第 8.1 节），而它实测是「采集没成功」的伪装形态（2026-09-24：图文笔记 7/7 返回 `code=0` + 空 `data`，耗时约 20s） |
 | 并发 | 2 | 平台未公布 QPS；限流码 302 出现即降并发 |
 
 与淘宝链路同一条设计取向：**宁可少讲一篇笔记，也不让答案等着小红书**。

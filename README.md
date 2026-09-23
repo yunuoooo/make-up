@@ -33,12 +33,12 @@ npm run dev            # http://localhost:3000
 
 ### 小红书取数
 
-取数有两条链路，用 `XHS_SOURCE_MODE` 切换：`mcp`（默认，本机浏览器驱动的本地 MCP 服务）和 `api`（Just One API 的 HTTP 接口，**迁移中**，见 [09-24 集成方案](./docs/specs/09-24-xhs-api-integration.md)）。工具名两条链路共用，切换不需要改技能或提示词。
+取数有两条链路，用 `XHS_SOURCE_MODE` 切换：`mcp`（默认，本机浏览器驱动的本地 MCP 服务）和 `api`（**TikHub** 的 HTTP 接口，见 [09-24 集成方案](./docs/specs/09-24-xhs-api-integration.md) 与 [TikHub SSOT](./docs/specs/09-24-tikhub-xhs-ssot.md)）。工具名两条链路共用，切换不需要改技能或提示词。
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `XHS_SOURCE_MODE` | `mcp` | `api` / `mcp`；其它值按「没有数据源」降级 |
-| `XHS_API_TOKEN` | 空 | Just One API 的 token。为空即未配置：不发请求，答案会说明本轮没有实时站内检索 |
+| `XHS_API_TOKEN` | 空 | TikHub 的 API Token（请求头 Bearer）。为空即未配置：不发请求，答案会说明本轮没有实时站内检索 |
 | `XHS_API_DETAIL_LIMIT` | `6` | 一轮读几篇正文——**唯一的省钱杠杆**（逐次计费） |
 | `XHS_MCP_URL` | `http://127.0.0.1:18060/mcp` | 本地 MCP 端点（mcp 模式） |
 | `XHS_MCP_AUTH_TOKEN` | 空 | 需要时给本地服务加 Bearer 鉴权 |
@@ -124,7 +124,7 @@ docs/specs/ docs/plan/      产品规格与实现方案
 改动前先读对应的 spec，实现与 spec 冲突时以 spec 为准：
 
 - [09-07 小红书 MCP 接入](./docs/specs/09-07-xhs-mcp-integration.md)（**已被 09-24 取代**；第 12/13 节的上游缺陷记录保留）
-- [09-24 小红书取数切换到 Just One API](./docs/specs/09-24-xhs-api-integration.md) 与 [上游接口 SSOT](./docs/specs/09-24-justoneapi-xhs-ssot.md)
+- [09-24 小红书取数架构](./docs/specs/09-24-xhs-api-integration.md) 与 [TikHub 接口 SSOT](./docs/specs/09-24-tikhub-xhs-ssot.md)（原 Just One 版已作废）
 - [09-17 Pi Agent 技能驱动运行时](./docs/specs/09-17-pi-skill-runtime.md)
 - [09-21 淘宝商品卡片](./docs/specs/09-21-taobao-product-cards.md) 与 [上游接口 SSOT](./docs/specs/09-21-justoneapi-taobao-ssot.md)
 - [09-22 Langfuse 全链路观测](./docs/specs/09-22-langfuse-observability.md)

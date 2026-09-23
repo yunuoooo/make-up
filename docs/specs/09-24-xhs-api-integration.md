@@ -1,14 +1,16 @@
-# 小红书取数切换到 Just One API（搜索 + 详情）
+# 小红书取数架构：TikHub（搜索 + 详情）
 
 Status: 设计已定，未动代码
 Date: 2026-09-24
-Related specs: [09-24-justoneapi-xhs-ssot.md](./09-24-justoneapi-xhs-ssot.md)（字段、参数、错误码、超时**只在那里定义一次**）· [09-07-xhs-mcp-integration.md](./09-07-xhs-mcp-integration.md)（**本文取代其接入设计**，第 12/13 节保留为上游缺陷的历史记录）· [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md) · [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md) · [09-22-langfuse-observability.md](./09-22-langfuse-observability.md) · [09-23-conversation-sessions.md](./09-23-conversation-sessions.md)
+Revised: 2026-09-24 — 检索改为**固定只取图文笔记**（决策 11），`noteType` 不再列为后续增量；技能与工具描述同步。
+Revised: 2026-09-24 — 供应商从 Just One 换成 **TikHub**（同一篇图文笔记 Just One 返回空 `data`，TikHub 拿到全文）。工具契约、闸门、链接策略、图文限定**全部不变**，只换数据源实现与字段 SSOT。
+Related specs: [09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)（字段、参数、错误码、计费陷阱**只在那里定义一次**）· [09-24-justoneapi-xhs-ssot.md](./09-24-justoneapi-xhs-ssot.md)（**已作废**，保留为换供应商的依据）· [09-07-xhs-mcp-integration.md](./09-07-xhs-mcp-integration.md)（**本文取代其接入设计**，第 12/13 节保留为上游缺陷的历史记录）· [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md) · [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md) · [09-22-langfuse-observability.md](./09-22-langfuse-observability.md) · [09-23-conversation-sessions.md](./09-23-conversation-sessions.md)
 
 ## 0. 文档目的
 
-本文定义「小红书取数从 `xiaohongshu-mcp` 换成 Just One API」的**架构决策与改动清单**：谁调、调什么、边界在哪、哪些文件跟着改、怎么验收。
+本文定义「小红书取数从 `xiaohongshu-mcp` 换成 HTTP 数据源（现为 TikHub）」的**架构决策与改动清单**：谁调、调什么、边界在哪、哪些文件跟着改、怎么验收。
 
-- **字段、参数、错误码、超时、配额**不在本文复述，一律以 [09-24 SSOT](./09-24-justoneapi-xhs-ssot.md) 为准。
+- **字段、参数、错误码、计费陷阱**不在本文复述，一律以 [TikHub SSOT](./09-24-tikhub-xhs-ssot.md) 为准。
 - 本文**不改**技能的输出格式（拆解表、`looktrace-products` 商品块）、不改 `looktrace.answer.v1`、不动淘宝卡片链路——换源不改变这些契约。
 - 09-07 的接入设计（含第零阶段的 Codex 冒烟、MCP 生命周期、浏览器登录）随换源整体失效；它的第 12/13 节是上游缺陷的实测记录，保留不删。
 
@@ -28,6 +30,7 @@ Related specs: [09-24-justoneapi-xhs-ssot.md](./09-24-justoneapi-xhs-ssot.md)（
 | 8 | 失败形态 | **闸门**返回可读 JSON + `details.reason`；**上游失败**抛出可读错误 | 闸门（未知 noteId、预算用尽）是预期内的结果，不该显示成故障；上游失败抛出去才能让观测层标成 failed（09-22 的失败分析就靠这个），而 pi 的失败工具结果同样把原因交给模型，模型两边都看得到 |
 | 9 | 串行队列 | **删除**执行队列 | 原队列是为 Chromium 的有状态驱动加的（`.pi/extensions/xiaohongshu-mcp.ts:132`），HTTP 数据接口没有这个约束 |
 | 10 | 技能改动 | **本文直接给出条款级改动**（第 7 节） | 换源与技能改动在同一次改动里闭环，不留「已知不一致」 |
+| 11 | 笔记类型 | **检索固定只取图文**：api 模式传 `note_type=普通笔记`（服务端过滤，TikHub 是中文枚举），mcp 回退链路在扩展里丢掉明确的 `video` 条目 | 技能的产出要一张能看清妆效的**完成妆画面**，而视频笔记在数据源里只有一张封面、拿不到画面帧。代价是候选池变小（视频在部分关键词下占 45–66%，09-07 第 12.3 节），所以搜不到时要换关键词而不是放宽类型 |
 
 ## 2. 目标架构
 
@@ -37,17 +40,17 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
     ▼
 .pi/extensions/xhs-source.ts            工具层：注册统一工具名、闸门、受控序列化、脱敏
     │
-    ├── XHS_SOURCE_MODE=api ──▶ lib/xhs/justoneapi.ts ──▶ https://api.justoneapi.com
+    ├── XHS_SOURCE_MODE=api ──▶ lib/xhs/tikhub.ts ──▶ https://api.tikhub.io
     └── XHS_SOURCE_MODE=mcp ──▶ 本地 xiaohongshu-mcp（迁移期回退路径，Phase D 删除）
 ```
 
 | 模块 | 职责 | 不做什么 |
 | --- | --- | --- |
-| `lib/xhs/justoneapi.ts`（新建） | HTTP 调用、信封与业务码判据、重试与超时、按 SSOT 第 10 节映射到内部类型、图片 URL 规范化 | 不认识 pi、不认识技能、不产出给模型看的文案 |
+| `lib/xhs/tikhub.ts` | HTTP 调用、两层信封判据、重试与超时、按 SSOT 第 8 节映射到内部类型、图片 URL 规范化 | 不认识 pi、不认识技能、不产出给模型看的文案 |
 | `lib/xhs/types.ts`（新建） | `XhsNoteSummary` / `XhsNoteDetail` 等内部类型 | — |
 | `.pi/extensions/xhs-source.ts`（由 `xiaohongshu-mcp.ts` 改名） | 注册工具、模式分支、本轮预算与 noteId 闸门、把内部类型序列化成模型可读文本、`details.reason` | 不写业务判断（该读几篇、该怎么回答是技能的事） |
 
-依赖方向单向：扩展 import `lib/xhs/*`，`lib/xhs/*` 只依赖 Node 内建（对齐 `lib/commerce/taobao.ts` 的写法）。`lib/xhs/justoneapi.ts` 是**换供应商唯一要改的文件**（SSOT 第 0 节）。
+依赖方向单向：扩展 import `lib/xhs/*`，`lib/xhs/*` 只依赖 Node 内建（对齐 `lib/commerce/taobao.ts` 的写法）。`lib/xhs/tikhub.ts` 是**换供应商唯一要改的文件**（SSOT 第 0 节）——从 Just One 换到 TikHub 就是一次实证：只换了这个文件 + 一份新 SSOT，工具契约、技能、闸门都没动。
 
 ## 3. 工具契约（v1）
 
@@ -56,10 +59,10 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 | 统一工具名 | 参数 | api 实现 | mcp 实现（回退路径） |
 | --- | --- | --- | --- |
 | `xhs_source_status` | 无 | 报：当前模式、是否配了 token、本轮已用调用数（不回显 token 本身） | 转发 `check_login_status` |
-| `xhs_search_notes` | `keyword`（必填）、`page`（可选，默认 1）、`sortType`（可选，默认 `general`） | `GET /api/xiaohongshu/search-note/v4` | `search_feeds`，并存下 `feed_id → xsec_token` 与 `noteCard.type` |
-| `xhs_get_note_detail` | `noteId`（必填） | `GET /api/xiaohongshu/get-note-detail/v6`（只吃 `noteId`，SSOT 第 2.2 节） | `get_feed_detail`，内部补 `xsec_token`；视频笔记照旧拦在本地（09-07 第 12.4 节的不变量保留） |
+| `xhs_search_notes` | `keyword`（必填）、`page`（可选，默认 1）、`sortType`（可选，默认 `general`） | `GET /api/v1/xiaohongshu/app_v2/search_notes`，**固定带 `note_type=普通笔记`**（决策 11） | `search_feeds`，并存下 `feed_id → xsec_token` 与 `noteCard.type`；返回前丢掉明确的 `video` 条目（只丢明确是视频的，类型未知一律放行） |
+| `xhs_get_note_detail` | `noteId`（必填） | `GET /api/v1/xiaohongshu/app_v2/get_image_note_detail`（只吃 `note_id`，SSOT 第 2.2 节） | `get_feed_detail`，内部补 `xsec_token`；视频笔记照旧拦在本地（09-07 第 12.4 节的不变量保留） |
 
-`noteType` / `timeFilter` **v1 不暴露给模型**：默认值已经够用，多一个枚举多一份误用面。要按笔记类型过滤时，服务端 `noteType=NORMAL_NOTE` 随时可加（SSOT 第 2.1 节），那是后续增量。
+`noteType` / `timeFilter` **v1 不暴露给模型**：默认值已经够用，多一个枚举多一份误用面。`noteType` 更进一步，**固定写死成图文过滤**（决策 11）——这不是默认值，是不给选择：视频笔记在链路里拿不到画面帧。要临时放宽只能改代码里的常量，不要在技能或提示词里给它留口子。
 
 `lib/pi/bridge.ts` 的白名单随之改为 `read,xhs_source_status,xhs_search_notes,xhs_get_note_detail`——因为工具名与模式无关，**切换模式不需要改白名单**。
 
@@ -68,10 +71,12 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 给模型的是**受控映射后的 JSON 文本**，不是上游原始响应（上游单条 66 字段、混合页内状态，SSOT 第 5 节）。
 
 > **只有 api 模式是受控形状。** mcp 回退路径（迁移期）**按上游原样透传**，一是不在回退链路上引入新行为（它今天就是这么工作的，改了等于动生产默认路径），二是把上游卡片映射成同一形状需要猜一批没验证过的字段名。代价是两种模式的 payload 形状不同——**技能因此不能依赖任何字段名**，它只按「标题 / 作者 / 正文 / 日期 / 图片」这些语义描述，两边的形状它都能读。切默认后 mcp 分支随 Phase D 删除，这个差异随之消失。
+>
+> **一处例外（决策 11）**：图文过滤两种模式都要做，所以 mcp 分支会解析返回、丢掉明确的 `video` 条目再交出去——这是唯一的「回退链路新行为」，理由是它只删模型本来就该跳过的条目，且解析失败时原样透传，不会因为形状变化把结果清空。
 
 ```json
 {
-  "source": "justoneapi",
+  "source": "tikhub",
   "mode": "api",
   "page": 1,
   "hasMore": true,
@@ -100,7 +105,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 ```json
 {
-  "source": "justoneapi",
+  "source": "tikhub",
   "mode": "api",
   "note": {
     "noteId": "68c…",
@@ -119,6 +124,9 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 ```
 
 - `text` 只信详情（SSOT 第 6 节）；`tags` 只取详情的 `hash_tag[].name`（搜索的 `tags[]` 恒为空）。
+- **`id` 用请求参数兜底**：上游没保证响应里有 `id`（OpenAPI 把 `data` 标成无类型），再认 `note_id` / `noteId`。**缺 id 不能把整篇丢掉**——2026-09-24 的线上 badcase 就是这么来的：6 篇有正文的笔记全被静默丢弃，对外只显示「没有结果」。对照 `lib/commerce/taobao.ts` 的 `itemIdOf(value, fallback)`，两个适配器同一条纪律。
+- **形状容错**：`data[0]` 平铺（V6）、`data[0].note_list[0]`（V3）、`{note: {...}}` 包装、JSON 字符串，四种都认。
+- **两种「读不到」必须分得开**：上游回空 `data` → `empty-result`（笔记可能已删/受限）；有数据但字段全不认识 → 抛 `SHAPE_DRIFT_CODE`，**错误信息里带上游的字段名**。混成一句「没有结果」，排查就得从头再走一遍。
 - **`comments` 字段整体不出现**（不是空数组）：本轮不取评论，字段的缺席本身就是契约（第 5 节）。
 - 正文与图片数量有上限，超出截断并置 `truncated: true`（数值见第 4 节）。
 - `sourceUrl` **不下发**（决策 4）。
@@ -148,7 +156,8 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 失败分两类处理，都能让模型看到原因，但观测上的含义不同：
 
 - **闸门**（`unknown-note` / `budget-exhausted` / `empty-result` / `bad-argument`）：返回可读 JSON，工具调用本身算成功——它们是预期内的结果，前端过程区显示成人话（「已到本轮取数上限」），不是红色的「调用失败」。
-- **上游与配置类失败**（`not-configured` / `quota-exhausted` / `auth-failed` / `upstream-error`）：**抛出**可读错误。pi 会把失败的工具结果连同原因交给模型，所以技能「说明实际样本量和限制」的条款照样有落点；同时观测层能把它标成 failed——09-22 的失败分析正是靠这个状态。抛出前先把配额/凭据类失败记进本轮的「整批停止」标记，后续调用一律不再发请求。
+- **上游与配置类失败**（`not-configured` / `quota-exhausted` / `auth-failed` / `upstream-error` / **形状漂移**）：**抛出**可读错误。pi 会把失败的工具结果连同原因交给模型，所以技能「说明实际样本量和限制」的条款照样有落点；同时观测层能把它标成 failed——09-22 的失败分析正是靠这个状态。抛出前先把配额/凭据类失败记进本轮的「整批停止」标记，后续调用一律不再发请求。
+- 形状漂移（`SHAPE_DRIFT_CODE`）单独一类：它不是网络、不是权限、不是配额，**重试和换 token 都没用**，所以文案要直说这一点，并把上游的字段名带出去——这是唯一能让下一次排查不必重跑一遍的东西。
 
 ## 4. 取数范围、预算与成本（v1）
 
@@ -175,7 +184,9 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 - 为什么不是更高：单价未知（第 15.8 条）。**6 是暂定值，不是结论**——Phase B 记录单轮调用次数与金额后回填；调整只需要改环境变量，不需要改代码（闸门的实现只认这个值）。
 - 上下文不是约束：正文很短（SSOT 第 6 节样例 71 / 159 字符），6 篇正文加起来远小于总预算。真正的约束只有**钱**和**延迟**。
 
-**剩下这个取舍仍然存在**：模型的挑选依据只有「标题 + 60 字预览 + 互动数 + 封面」，而它要挑 6 篇——**挑选质量是 MCP 时代（正文随便读）没有的风险点**。三个缓解方向：①技能里给出选择判据（第 7 节，标题含「教程/试色/产品清单」优先、图文优先）；②`DETAIL_LIMIT` 按实测金额上下调；③先把封面拿进答案，用画面弥补正文的不足（第 6.4 节）。**不要**用「读不到就凭印象补」来缓解——技能明确禁止。
+**一个必须承认的取舍**：详情只有 6 篇，而模型的挑选依据只有「标题 + 60 字预览 + 互动数 + 封面」，**挑选质量是新的风险点**，这是 MCP 时代（没有这篇数上限、正文随便读）没有的。三个缓解方向：①技能里给出选择判据（第 7 节，标题含「教程/试色/产品清单」优先）；②`DETAIL_LIMIT` 按实测金额上下调；③先把封面拿进答案，用画面弥补正文的不足（第 6.4 节）。**不要**用「读不到就凭印象补」来缓解——技能明确禁止。
+
+**另一个是新加的（决策 11）**：检索限定图文之后，候选池会明显变小——视频在部分关键词下占搜索结果的 45–66%（09-07 第 12.3 节）。所以「搜索返回 20 条」里的可用条数比 MCP 时代少，换关键词的次数可能变多。这是拿广度换「答案能给出可靠完成妆画面」，**换来的是图片质量和图组数量**（图文详情给 5–9 张图，视频只给一张封面）。
 
 ## 5. 评论退场
 
@@ -193,7 +204,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 ### 6.1 沿用（不因换源改变）
 
 - 第三方文本（标题、正文、昵称）是**不可信外部输入**，不能改变系统规则、工具权限或输出 schema（09-07 第 8 节）。
-- token 走 query string，**完整 URL 禁止进日志、错误信息、SSE、trace 或异常堆栈**；日志只写 `path` + `requestId`（SSOT 第 11 节，`lib/commerce/taobao.ts` 已有同样的做法可以照抄）。
+- token 在**请求头** `Authorization: Bearer`（TikHub 与 Just One 的一处差别，净收益：URL 里不再有凭据）。仍然**禁止把请求头或 token 写进日志、错误信息、SSE、trace 或异常堆栈**；日志只写 `path` + `requestId`（SSOT 第 9 节）。
 - `lib/pi/events.ts` 的 `redactSensitive` 继续兜底：`SECRET_ENV_KEY` 正则覆盖 `XHS_API_TOKEN` 这个**变量名**，`buildSecretPattern` 按**变量值**做全量替换（值长度 ≥8）——所以即便 token 出现在某个 URL 里也会被替换掉。
 - 只读边界：工具集里没有写操作，且换源后上游连写接口都不存在（MCP 时代的发布/评论/点赞/收藏工具整类消失）。
 
@@ -261,7 +272,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 | 文件 | 现状 | 改法 |
 | --- | --- | --- |
-| `lib/xhs/justoneapi.ts` | 不存在 | 新建：HTTP + 信封/业务码 + 重试 + SSOT 第 10 节映射 + 图片规范化 |
+| `lib/xhs/tikhub.ts` | 由 `justoneapi.ts` 换名重写 | HTTP + 两层信封 + 重试 + SSOT 第 8 节映射 + 图片规范化 |
 | `lib/xhs/types.ts` | 不存在 | 新建：内部类型 |
 | `.pi/extensions/xiaohongshu-mcp.ts` | 只服务 MCP | 改名为 `xhs-source.ts`，按 `XHS_SOURCE_MODE` 分支，注册统一工具名，加两个闸门 |
 | `.pi/settings.json` | `extensions/xiaohongshu-mcp.ts` | 改文件名 |
@@ -271,7 +282,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 | `frontend/components/chat/TurnTrace.tsx:15-17` | 工具名 → 图标 | 换名（`xhs_source_status` 用 `ShieldCheck`，搜索/详情用 `Search`） |
 | `xiaohongshu-makeup-advisor-latest/SKILL.md` + `references/research-method.md` | 见第 7 节 | 按第 7 节逐条改 |
 | `test/L1/xhs-mcp-extension.test.ts` | 钉「视频笔记不发上游请求」 | 改名 `xhs-source-extension.test.ts`；**保留** mcp 分支的视频拦截用例，**新增** api 分支的三条：未知 noteId 不发请求、预算用尽不发请求、未配 token 不发请求 |
-| `test/L1/xhs-justoneapi.test.ts` | 不存在 | 新建：信封与业务码、映射、图片规范化（`format/heif→jpg`、`http→https`）。fixture 按 SSOT 第 14.4 节的真实样例裁剪 |
+| `test/L1/xhs-tikhub.test.ts` | 由 `xhs-justoneapi.test.ts` 改名重写 | 两层信封、计费陷阱（内层失败**不重试**）、映射、分页凭据、图片规范化。fixture 用**真实详情响应**裁剪（token 全部换假值） |
 | `.env.example` / `.env` | 只有 `XHS_MCP_*`（`XHS_SOURCE_MODE` 在但**没有代码读它**） | 加 `XHS_API_*`（SSOT 第 11 节）；迁移期 `XHS_MCP_*` 保留 |
 | `README.md` | 配置表、命令表、故障排查都写着 MCP/风控/视频 | 换源后改；**切默认前不改**（回退路径仍是真的），Phase D 一起清理 |
 | `docs/xhs-mcp-local.md` | 本地 MCP 部署说明 | 头部标注「迁移期文档」，Phase D 删除或重写为 API 配置说明 |
@@ -283,10 +294,12 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 ### 9.1 L1（`npm run test:l1`）
 
-- `test/L1/xhs-justoneapi.test.ts`：`code=0` 正常映射；`301/500` 重试一次后放弃；`302/303/601/602` 不重试且标记整批停止；`100/600` 判为凭据问题；HTTP 4xx/5xx 走同一个信封；缺 `message`/`recordTime` 不报错；图片取值链与 heif→jpg。
+- `test/L1/xhs-tikhub.test.ts`：两层信封（外层 200 + 内层 `code=0`/`success=true`）；外层 5xx 重试一次、401/403/429 不重试、内层「服务异常」**不重试**（已计费）；真实 fixture 的嵌套形状与白名单（`xsec_token` 不许漏出）；分页凭据；图片取值链与 heif→jpg、http→https。
 - `test/L1/xhs-source-extension.test.ts`（沿用现有 stub-fetch 写法）：
   - api 模式：未知 noteId **不发上游请求**；预算用尽**不发上游请求**；token 为空**不发上游请求**；返回文本里**不出现 token**。
+  - api 模式：搜索请求**必须带 `note_type=普通笔记`**（决策 11 只值一条断言，但漏了就悄悄退回视频混排）。
   - mcp 模式：视频笔记拦截、未知 `feed_id` 放行——**原有不变量不能被换源改掉**。
+  - mcp 模式：搜索返回里的 `video` 条目被丢掉、类型未知的条目保留、丢了几条进 `details`（决策 11 在回退链路上的那一半）。
 - 技能改动后，`test/L1/pi-bridge.test.ts` 等涉及提示词/工具名的断言同步更新。
 
 ### 9.2 L3（`RUN_L3_E2E=1`）
@@ -320,7 +333,8 @@ Phase D 之前**不要**动 README 的 MCP 章节：回退路径在那之前都�
 | 文档 | 改什么 |
 | --- | --- |
 | [09-07](./09-07-xhs-mcp-integration.md) | 头部加一行「Superseded：取数链路已被 09-24-xhs-api-integration.md 取代；第 12/13 节作为上游缺陷的实测记录保留」 |
-| [09-24 SSOT](./09-24-justoneapi-xhs-ssot.md) | 第 15 节：第 9 条（链接策略）填结论 **A**、第 10 条（迁移默认值）填结论「并存，验收后切」（即本第 10 节）；第 11 节：`XHS_API_COMMENT_PAGES` 标注「本阶段不实现」、`XHS_API_DETAIL_LIMIT` 默认值由 2 改为 6 并注明是暂定值；第 12 节的成本口径（5–6 次/轮）按第 4 节回填；第 13 节的迁移改动点表指向本文 |
+| [09-24 Just One SSOT](./09-24-justoneapi-xhs-ssot.md) | 头部标注**已作废**（xhs 链路不再使用；淘宝链路仍用 Just One，那份在 09-21） |
+| [09-24 TikHub SSOT](./09-24-tikhub-xhs-ssot.md) | 字段/参数/信封/计费陷阱的唯一来源；搜索响应形状待采样（第 7 节） |
 | [09-22](./09-22-langfuse-observability.md) | 第 99/100、380/381 行的工具名；第 456 行「26KB」标注为 MCP 时代观察值、需重测 |
 | `README.md` | Phase C/D 时改（配置表、命令表、故障排查、结构树） |
 | `AGENTS.md` | 同第 8 节 |
