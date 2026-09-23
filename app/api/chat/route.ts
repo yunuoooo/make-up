@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { randomUUID } from "node:crypto";
-import { formatSseEvent, runPiAgent } from "@/lib/pi/bridge";
+import { formatSseEvent, resolvePiStateDir, runPiAgent } from "@/lib/pi/bridge";
 import { redactSensitive, type AppSseEvent } from "@/lib/pi/events";
 import { buildProductCards } from "@/lib/commerce/cards";
 import { extractProductBlock, productKey } from "@/lib/commerce/product-block";
@@ -9,6 +9,8 @@ import { createTaobaoClient } from "@/lib/commerce/taobao";
 import { loadProductCardsCache } from "@/lib/storage/taobao-cache";
 import { flushObservability, startTurnTrace } from "@/lib/observability/langfuse";
 import { createCardsObserver } from "@/lib/observability/cards";
+import { isValidSessionId, pruneSessionsThrottled } from "@/lib/pi/session";
+import { releaseConversation, tryAcquireConversation } from "@/lib/pi/conversation-lock";
 import type { TurnTrace } from "@/lib/observability/types";
 
 const DEFAULT_CARD_LIMIT = 8;
@@ -102,18 +104,37 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const userMessage = (body as { message: string }).message.trim();
+  // 会话 id 来自客户端，并且会成为服务端会话文件名的一部分：不合法就挡在这里，
+  // 不能像以前那样"没有就算了"——那会让每一轮都退化成互不相干的单轮。
+  const conversationId = typeof (body as { conversationId?: unknown }).conversationId === "string"
+    ? (body as { conversationId: string }).conversationId.trim()
+    : "";
+  if (!isValidSessionId(conversationId)) {
+    return Response.json({ error: "会话标识无效，请重新开始一个对话。" }, { status: 400 });
+  }
+  // 同一会话并发跑两个 pi 进程会互相覆盖会话文件，见 lib/pi/conversation-lock.ts。
+  if (!tryAcquireConversation(conversationId)) {
+    return Response.json({ error: "这个对话还在生成上一条回复，请稍候再问。" }, { status: 409 });
+  }
+
   // traceId 由这里生成再交给 bridge：观测层才能在 spawn 之前建好根 trace，
   // 而 SSE 发给前端的仍是同一个 id。
   const traceId = `trace_${randomUUID()}`;
-  const conversationId = typeof (body as { conversationId?: unknown }).conversationId === "string"
-    ? (body as { conversationId: string }).conversationId
-    : undefined;
   // 会话 id 来自客户端，进 trace 之前照例过一遍脱敏。
-  const trace = await startTurnTrace({
-    traceId,
-    userMessage,
-    ...(conversationId ? { conversationId: String(redactSensitive(conversationId)) } : {})
-  });
+  let trace: TurnTrace | null = null;
+  try {
+    trace = await startTurnTrace({
+      traceId,
+      userMessage,
+      conversationId: String(redactSensitive(conversationId))
+    });
+  } catch {
+    // 观测建不起来不该让这一轮卡死，但必须先放锁，否则这个对话会一直 409。
+    releaseConversation(conversationId);
+    return Response.json({ error: "观测初始化失败，请重试。" }, { status: 500 });
+  }
+  // 顺手清理旧会话（十分钟最多一次），失败不影响本轮对话。
+  void pruneSessionsThrottled(process.cwd(), resolvePiStateDir());
 
   const requestAbort = new AbortController();
   const forwardAbort = () => requestAbort.abort();
@@ -134,7 +155,7 @@ export async function POST(request: Request): Promise<Response> {
         const holder: { result: AppSseEvent | null } = { result: null };
         const bridge = await runPiAgent({
           prompt: userMessage,
-          ...(conversationId ? { conversationId } : {}),
+          conversationId,
           traceId,
           trace,
           signal: requestAbort.signal
@@ -167,11 +188,19 @@ export async function POST(request: Request): Promise<Response> {
         await flushObservability();
         closed = true;
         request.signal.removeEventListener("abort", forwardAbort);
-        controller.close();
+        // 这一轮的终点：放开会话锁，下一个追问才能进来。
+        releaseConversation(conversationId);
+        try {
+          controller.close();
+        } catch {
+          // 客户端已经断开时流可能已被取消，这里关不掉不算错误。
+        }
       }
     },
     cancel() {
       requestAbort.abort();
+      // 客户端断开也要放锁：start() 的 finally 不一定还会被调度到。
+      releaseConversation(conversationId);
     }
   });
 

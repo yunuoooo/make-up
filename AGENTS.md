@@ -27,7 +27,7 @@
 
 ## 运行时依赖边界
 
-部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`，技能从仓库目录加载，xhs-mcp 二进制从 `xiaohongshu-mcp/bin/` 按 `<os>-<arch>` 选择。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH`、`XHS_MCP_BINARY` 可覆盖默认值。
+部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载，xhs-mcp 二进制从 `xiaohongshu-mcp/bin/` 按 `<os>-<arch>` 选择。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH`、`XHS_MCP_BINARY` 可覆盖默认值。
 
 ## 编码风格与命名约定
 

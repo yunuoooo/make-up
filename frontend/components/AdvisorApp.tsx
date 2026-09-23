@@ -61,10 +61,17 @@ export function AdvisorApp() {
     chat.loadConversation(id, conversations.load(id));
   }
 
-  function deleteConversation(id: string) {
+  async function deleteConversation(id: string) {
     conversations.remove(id);
     if (chat.conversationId === id) chat.startNewChat();
-    toast.success("这条对话记录已删除");
+    // 服务端会话也要删：只删本地的话，磁盘上还留着完整上下文（spec 09-23 第 4.6 节）。
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`sessions delete ${response.status}`);
+      toast.success("这条对话记录已删除");
+    } catch {
+      toast.error("本地记录已删除，但服务端会话没有删掉。");
+    }
   }
 
   function openCreateProduct() {
@@ -188,7 +195,7 @@ export function AdvisorApp() {
             <div className="grid size-8 place-items-center rounded-full bg-white/10 text-xs">MY</div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">我的私人妆台</p>
-              <p className="truncate text-[11px] text-white/40">妆匣在服务端 · 对话在本地</p>
+              <p className="truncate text-[11px] text-white/40">妆匣与对话上下文都在服务端</p>
             </div>
             <ChevronRight className="size-4 text-white/30" />
           </div>
@@ -230,6 +237,7 @@ export function AdvisorApp() {
             isSending={chat.isSending}
             runtimePhase={chat.runtimePhase}
             isHistorical={chat.isHistorical}
+            isSessionMissing={chat.isSessionMissing}
             onDraftChange={chat.setMessage}
             onSubmit={chat.submitMessage}
           />

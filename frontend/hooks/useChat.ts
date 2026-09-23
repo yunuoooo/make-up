@@ -33,8 +33,13 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [runtimePhase, setRuntimePhase] = useState<string | null>(null);
-  /** 打开的是历史对话时为真：Agent 不记得这些内容，界面要如实说明。 */
+  /** 打开的是历史对话时为真：界面要说明继续追问会带上服务端会话里的上下文。 */
   const [isHistorical, setIsHistorical] = useState(false);
+  /**
+   * 服务端会话已经不在了（被清理或换过机器）：本地还有历史，但这轮是从零开始的。
+   * 只在"本条对话已经有前文"时才可能为真——新对话查不到会话是正常的。
+   */
+  const [isSessionMissing, setIsSessionMissing] = useState(false);
   const isSendingRef = useRef(false);
   /**
    * 当前这轮的编号。答案落地后流还会开着等商品卡片（最长一整轮淘宝预算），
@@ -54,6 +59,7 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
     setMessage("");
     setRuntimePhase(null);
     setIsHistorical(false);
+    setIsSessionMissing(false);
   }, []);
 
   const loadConversation = useCallback((id: string, storedTurns: Turn[]) => {
@@ -63,6 +69,8 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
     setMessage("");
     setRuntimePhase(null);
     setIsHistorical(true);
+    // 还没问这一轮，先不知道服务端会话还在不在；等 status 事件说话。
+    setIsSessionMissing(false);
   }, []);
 
   const submitMessage = useCallback(async (event?: FormEvent) => {
@@ -109,6 +117,7 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
     isSendingRef.current = true;
     setIsSending(true);
     setIsHistorical(false);
+    setIsSessionMissing(false);
     setRuntimePhase(null);
     setConversationId(activeConversationId);
     setMessage("");
@@ -130,8 +139,18 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
         // 用户已经开了新对话或切到历史对话：这轮的事件到此为止，别再改界面。
         if (runIdRef.current !== runId) return;
         if (parsed.event === "status") {
-          const status = parsed.data as { message?: string; traceId?: string; agentRunId?: string; skillPath?: string };
+          const status = parsed.data as {
+            message?: string;
+            traceId?: string;
+            agentRunId?: string;
+            skillPath?: string;
+            sessionFound?: boolean;
+          };
           setRuntimePhase(status.message ?? null);
+          // 已经有前文却查不到服务端会话：如实说这一轮从零开始，别让用户以为上下文还在。
+          if (base.some((turn) => turn.role === "user") && status.sessionFound === false) {
+            setIsSessionMissing(true);
+          }
           if (status.traceId && status.agentRunId) {
             observation = observation ?? {
               traceId: status.traceId,
@@ -304,6 +323,7 @@ export function useChat({ userId, onError, onPersist }: UseChatOptions) {
     conversationId,
     isSending,
     isHistorical,
+    isSessionMissing,
     runtimePhase,
     startNewChat,
     loadConversation,

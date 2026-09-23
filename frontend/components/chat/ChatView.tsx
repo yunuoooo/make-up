@@ -11,7 +11,8 @@ import {
   DISCLAIMER,
   INSPIRATION_IMAGE,
   INSPIRATION_PROMPT,
-  STATELESS_NOTICE,
+  RESUMABLE_NOTICE,
+  SESSION_MISSING_NOTICE,
   SUGGESTED_PROMPTS
 } from "@/frontend/lib/constants";
 import type { Turn } from "@/frontend/lib/types";
@@ -22,6 +23,7 @@ type ChatViewProps = {
   isSending: boolean;
   runtimePhase: string | null;
   isHistorical: boolean;
+  isSessionMissing: boolean;
   onDraftChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
 };
@@ -32,6 +34,7 @@ export function ChatView({
   isSending,
   runtimePhase,
   isHistorical,
+  isSessionMissing,
   onDraftChange,
   onSubmit
 }: ChatViewProps) {
@@ -121,7 +124,7 @@ export function ChatView({
           </Button>
         </form>
         <p className="pointer-events-auto mx-auto mt-2 max-w-3xl text-center text-[11px] text-[#a29c96]">
-          {isHistorical ? STATELESS_NOTICE : DISCLAIMER}
+          {isSessionMissing ? SESSION_MISSING_NOTICE : isHistorical ? RESUMABLE_NOTICE : DISCLAIMER}
         </p>
       </div>
     </div>

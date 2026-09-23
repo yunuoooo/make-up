@@ -11,6 +11,7 @@ import {
   resolveSkillEntry,
   resolveSkillPath,
   runPiAgent,
+  sessionArgs,
   type PiBridgeOptions
 } from "../../lib/pi/bridge.ts";
 import { createPiEventMapper, type AppSseEvent } from "../../lib/pi/events.ts";
@@ -52,6 +53,30 @@ test("builds an isolated Pi command for the read-only XHS runtime", () => {
     "--model", "deepseek-chat",
     "-p", "我想画韩系氧气妆"
   ]);
+});
+
+test("keys the pi session on the conversation id so a follow-up sees the first round", () => {
+  const conversationId = "conversation_9f0e6b1c-2f4a-4c1e-9c3a-7d5b8e2a1f60";
+  const args = buildPiArgs({ ...options, conversationId });
+
+  // 会话键交给 pi 自己 resume-or-create：同一个 id 的第二轮自动带上第一轮的上下文。
+  assert.deepEqual(sessionArgs(conversationId), ["--session-id", conversationId]);
+  assert.deepEqual(args.slice(0, 4), ["--mode", "json", "--session-id", conversationId]);
+  // pi 里 --no-session 优先于 --session-id（走内存会话），两个一起传等于没接会话。
+  assert.ok(!args.includes("--no-session"), "接了会话就不能再传 --no-session");
+
+  // pi 明确禁止 --session-id 与这几个一起用，传了会直接退出。
+  for (const flag of ["--session", "--continue", "--resume", "--fork"]) {
+    assert.ok(!args.includes(flag), `${flag} 与 --session-id 互斥`);
+  }
+});
+
+test("falls back to a stateless round instead of inventing a session id", () => {
+  // 没有 id 或 id 不合法时不再自造一个每轮都不同的 id 冒充会话：
+  // 那样看起来有会话，实际每轮都是从零开始，而且会在磁盘上堆一堆一次性会话。
+  for (const value of [undefined, "", "../../etc/passwd", "a/b", ".hidden"]) {
+    assert.deepEqual(sessionArgs(value), ["--no-session"], `不应为 ${JSON.stringify(value)} 建会话`);
+  }
 });
 
 test("loads the advisor skill through the read tool instead of the system prompt", () => {
@@ -172,6 +197,21 @@ test("reports the run wall clock on the result event", async () => {
   assert.ok((durationMs as number) >= 0, "result 要带上本次耗时");
   // 失败原因照旧要透出，新增字段不能顶掉它。
   assert.ok(events.some((event) => event.event === "error"));
+});
+
+test("tells the client whether the round resumes a session or starts from zero", async () => {
+  const events: AppSseEvent[] = [];
+  // 技能文件不存在：这条路径在 spawn 之前返回，测试不启动任何进程。
+  await runPiAgent(
+    { prompt: "我想画韩系氧气妆", skillPath: "/tmp/looktrace-missing-skill-for-test" },
+    (event) => void events.push(event)
+  );
+
+  const status = events.find((event) => event.event === "status");
+  // 没给会话键：这一轮是明确的单轮无状态，界面据此可以说实话。
+  assert.equal(status?.data.sessionId, null);
+  assert.equal(status?.data.sessionFound, false);
+  assert.equal(status?.data.ephemeral, true);
 });
 
 test("finishes the round even when the observation sink throws", async () => {

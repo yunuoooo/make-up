@@ -95,13 +95,15 @@ npm run dev            # http://localhost:3000
 | 搜索可能被风控拦 | 登录态被标记后每次搜索必然等满 60s。见 [09-07 第 13 节](./docs/specs/09-07-xhs-mcp-integration.md) |
 | 视频笔记读不了 | 上游 `get_feed_detail` 对视频笔记必然超时，工具层直接拒绝。见 [09-07 第 12 节](./docs/specs/09-07-xhs-mcp-integration.md) |
 | 商品卡片默认关 | 上游按次计费，要用得显式打开 `TAOBAO_CARDS_ENABLED` |
+| 会话有保质期 | 服务端会话保留 30 条、30 天，超出的被清理；过期后追问会从零开始，界面会提示。见 [09-23](./docs/specs/09-23-conversation-sessions.md) |
+| 单实例的会话锁 | 同一会话的并发请求返回 409，锁在进程内；多实例部署需要外部锁 |
 
 ## 目录
 
 ```text
 app/                        Next.js App Router 页面与 API 路由
 frontend/                   界面组件、hooks、设计 token（Tailwind v4 + shadcn/ui）
-lib/pi/                     Pi 运行时桥接与事件映射（Agent 的唯一入口）
+lib/pi/                     Pi 运行时桥接、事件映射与会话管理（Agent 的唯一入口）
 lib/commerce/               商品卡片链路：技能的商品块 → 上游适配器 → 卡片补全
 lib/observability/          Langfuse trace 采集
 lib/storage/ lib/types/     .local-data/ 下的 JSON 存储与领域类型
@@ -119,5 +121,6 @@ docs/specs/ docs/plan/      产品规格与实现方案
 - [09-17 Pi Agent 技能驱动运行时](./docs/specs/09-17-pi-skill-runtime.md)
 - [09-21 淘宝商品卡片](./docs/specs/09-21-taobao-product-cards.md) 与 [上游接口 SSOT](./docs/specs/09-21-justoneapi-taobao-ssot.md)
 - [09-22 Langfuse 全链路观测](./docs/specs/09-22-langfuse-observability.md)
+- [09-23 会话上下文（双阶段流程的第二阶段）](./docs/specs/09-23-conversation-sessions.md)
 
 `AGENTS.md` 是仓库约定（结构、命令、编码风格、提交规范）。

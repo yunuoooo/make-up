@@ -45,7 +45,13 @@ export const CONVERSATION_STORAGE_KEY = "looktrace.conversations.v1";
 /** localStorage 容量有限，只保留最近的若干条对话。 */
 export const MAX_CONVERSATIONS = 30;
 
-/** 打开历史对话时的提示：pi 以 --no-session 运行，每轮都是独立上下文。 */
-export const STATELESS_NOTICE = "Agent 每轮独立运行，追问不会带上此前的对话内容。";
+/**
+ * 打开历史对话时的提示：会话上下文保存在服务端（pi 原生 session），
+ * 追问会带上前几轮的推荐结论。另见 spec 09-23-conversation-sessions.md。
+ */
+export const RESUMABLE_NOTICE = "继续追问会带上此前轮次的研究结论，上下文保存在服务端会话里。";
+
+/** 服务端会话已不在（被清理、换机器或清了 .local-data）时的提示：本地历史还在，Agent 从零开始。 */
+export const SESSION_MISSING_NOTICE = "服务端已没有这条会话的上下文，本轮从零开始；左侧记录仍可回看。";
 
 export const DISCLAIMER = "建议仅用于妆容与选品，不替代皮肤科诊疗。";

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   includeContentEnabled,
   initObservability,
@@ -153,4 +154,28 @@ test("drops undefined fields instead of writing them as empty", () => {
   trace.startObservation("read", { input: { path: "SKILL.md" }, statusMessage: undefined }, "tool");
 
   assert.deepEqual(calls[1].attributes, { input: { path: "SKILL.md" } });
+});
+
+/**
+ * dev 下 `/instrumentation` 的 edge 编译单元会静态解析整条 OTel 链，而 edge 里没有
+ * `stream`/`fs`，解析失败会让服务器起不来（`Can't resolve 'stream'`）。
+ * 现在的处理是：next.config.mjs 在 edge 编译里把 OTel 入口 alias 成空模块，
+ * 而这条 alias 成立的前提是 register() 先按 runtime 挡住。
+ * 守卫没了 = edge 下拿到空对象，比编译不过更难查，所以在这里钉住两者的配对。
+ */
+test("keeps the observability import behind the Node runtime guard", async () => {
+  const instrumentation = await readFile("instrumentation.ts", "utf8");
+  const guard = instrumentation.indexOf('NEXT_RUNTIME !== "nodejs"');
+  const load = instrumentation.indexOf('import("./lib/observability/langfuse.ts")');
+
+  assert.notEqual(guard, -1, "instrumentation 必须先判 runtime");
+  assert.notEqual(load, -1, "观测入口应通过动态 import 加载");
+  assert.ok(load > guard, "判定 runtime 之前不能加载观测模块");
+
+  const config = await readFile("next.config.mjs", "utf8");
+  assert.match(config, /nextRuntime === "edge"/, "edge 编译必须被显式处理");
+  // 链上的入口都要指向空模块，漏一个就会重新出现解析失败。
+  for (const pkg of ["@opentelemetry/sdk-node", "@langfuse/otel", "@langfuse/tracing"]) {
+    assert.ok(config.includes(`"${pkg}": false`), `${pkg} 在 edge 下应指向空模块`);
+  }
 });

@@ -11,6 +11,7 @@ import {
   type AppSseEvent,
   type PiRunContext
 } from "./events.ts";
+import { findSessionFile, isValidSessionId } from "./session.ts";
 import { createTurnCollector } from "../observability/collector.ts";
 import { flushObservability, includeContentEnabled } from "../observability/langfuse.ts";
 import type { TurnTrace } from "../observability/types.ts";
@@ -24,6 +25,11 @@ export type PiBridgeOptions = {
   model?: string;
   piBin?: string;
   cwd?: string;
+  /**
+   * 会话键：pi 用它 resume-or-create 同一份会话文件，第二阶段的追问因此能看到
+   * 第一阶段的研究结论（spec `09-23-conversation-sessions.md`）。
+   * 缺失或不合法时退回单轮无状态（`--no-session`），不会自造一个每次都不同的 id。
+   */
   conversationId?: string;
   /**
    * 由调用方预生成，好让观测层在 spawn 之前就建好根 trace。
@@ -82,12 +88,24 @@ export function resolvePiStateDir(cwd: string = process.cwd()): string {
   return process.env.PI_CODING_AGENT_DIR ?? resolve(cwd, DEFAULT_PI_STATE_DIR);
 }
 
+/**
+ * 会话参数：有合法 id 就交给 pi 续话，没有就明确地跑成单轮无状态。
+ *
+ * 不能两者都传——pi 里 `--no-session` 优先，会静默退回内存会话（session-manager 的
+ * createSessionManager 先看 noSession），那样「加了 --session-id」看起来生效，实际没有。
+ */
+export function sessionArgs(conversationId: string | undefined): string[] {
+  return conversationId && isValidSessionId(conversationId)
+    ? ["--session-id", conversationId]
+    : ["--no-session"];
+}
+
 export function buildPiArgs(options: PiBridgeOptions): string[] {
   const cwd = options.cwd ?? process.cwd();
   const extensionPath = options.extensionPath ?? resolve(cwd, ".pi/extensions/xiaohongshu-mcp.ts");
   return [
     "--mode", "json",
-    "--no-session",
+    ...sessionArgs(options.conversationId),
     "--approve",
     "--no-context-files",
     "--no-skills",
@@ -119,8 +137,16 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
   const startedAt = Date.now();
   const traceId = options.traceId ?? `trace_${randomUUID()}`;
   const agentRunId = `pi_${randomUUID()}`;
+  // conversationId 是 trace 归因用的标签；sessionId 才是 pi 的会话键。
+  // 两者同值时（chat 链路）它们指向同一条会话，没有合法 id 时只有前者存在。
   const conversationId = options.conversationId ?? `conv_${randomUUID()}`;
+  const sessionId = options.conversationId && isValidSessionId(options.conversationId) ? options.conversationId : null;
   const messageId = `msg_${randomUUID()}`;
+  const cwd = options.cwd ?? process.cwd();
+  const stateDir = resolvePiStateDir(cwd);
+  // 「续话还是新开」只是给界面的一句实话：查不到就说明这一轮会从零开始，
+  // 前端据此提示用户，而不是让他以为前文还在。
+  const sessionFile = sessionId ? await findSessionFile(cwd, sessionId, stateDir) : null;
   const provider = options.provider ?? process.env.PI_PROVIDER ?? "deepseek";
   const model = options.model ?? process.env.PI_MODEL ?? "deepseek-chat";
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
@@ -170,10 +196,21 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
   let spawnError: Error | null = null;
   let child: ChildProcess;
 
+  // pi 把警告和错误写在 stderr（例如「找不到这个 id 的会话，已新建」）。
+  // 它必须被消费：只 pipe 不读，管道写满 64 KB 会把子进程堵死；顺手留最后几行，
+  // 失败时当作原因带上——否则那些信息哪儿都没有。
+  const stderrTail: string[] = [];
+  const STDERR_TAIL_LINES = 20;
+  const stderrHint = (): string =>
+    stderrTail.length ? `（pi stderr：${redactSensitive(stderrTail.slice(-5).join(" | "))}）` : "";
+
   const finish = async (result: PiBridgeResult, errorMessage?: string): Promise<PiBridgeResult> => {
     const settled: PiBridgeResult = { ...result, answerText: redactSensitive(result.answerText) };
     if (errorMessage && settled.status === "failed") {
-      await sink({ event: "error", data: { message: errorMessage, runtime: "pi", traceId: settled.run.traceId } });
+      await sink({
+        event: "error",
+        data: { message: `${errorMessage}${stderrHint()}`, runtime: "pi", traceId: settled.run.traceId }
+      });
     }
     await sink({
       event: "result",
@@ -198,6 +235,10 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       traceId,
       agentRunId,
       conversationId,
+      // 本轮是续话还是新开：sessionId 为 null 表示这轮按单轮无状态跑。
+      sessionId,
+      sessionFound: sessionFile !== null,
+      ephemeral: sessionId === null,
       messageId,
       skillPath,
       skillEntry: resolveSkillEntry(skillPath)
@@ -228,7 +269,6 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
     }, `未找到技能文件 ${resolveSkillEntry(skillPath)}；Pi Agent 的行为由技能决定，缺失时不回退到系统提示词。`);
   }
 
-  const cwd = options.cwd ?? process.cwd();
   const piBin = options.piBin ?? resolvePiBin(cwd);
   try {
     await access(piBin);
@@ -243,7 +283,6 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
     }, `未找到 pi 可执行文件 ${piBin}；请先运行 npm install（pi 是本项目的依赖），或用 PI_BIN 指定路径。`);
   }
 
-  const stateDir = resolvePiStateDir(cwd);
   await mkdir(stateDir, { recursive: true });
 
   try {
@@ -263,6 +302,15 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       exitCode: null
     }, spawnError.message);
   }
+
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk: string) => {
+    for (const line of chunk.split("\n")) {
+      if (!line.trim()) continue;
+      stderrTail.push(line);
+      if (stderrTail.length > STDERR_TAIL_LINES) stderrTail.shift();
+    }
+  });
 
   const abortHandler = () => {
     cancelled = true;
