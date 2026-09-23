@@ -1,0 +1,60 @@
+{
+  "_note": "结构取自 docs/specs/09-24-justoneapi-xhs-ssot.md 第 5.2 节的真实样例：`data` 是数组，data[0] 就是笔记本体。刻意带上 share_info.link（含 xsec_token）与页内状态字段，用来验证映射层不会把它们漏出去。",
+  "code": 0,
+  "message": null,
+  "data": [
+    {
+      "id": "68c1f0a2000000001a02b7c1",
+      "title": "油皮通勤底妆｜低饱和灰粉眼妆思路",
+      "desc": "最近很喜欢的低饱和通勤妆。\n底妆：兰蔻菁纯臻颜精华粉底液 BO-01，薄涂再按压一次。\n眼影：只用一盘灰棕，眼窝压一层就停，不加亮片。\n#低饱和妆容[话题]# #通勤妆[话题]#",
+      "type": "normal",
+      "hash_tag": [
+        { "name": "低饱和妆容", "id": "5a1b2c" },
+        { "name": "通勤妆", "id": "5a1b2d" }
+      ],
+      "topics": [{ "name": "低饱和妆容", "id": "5a1b2c", "link": "/topic/5a1b2c" }],
+      "user": {
+        "nickname": "薄荷不加冰",
+        "name": "薄荷不加冰",
+        "userid": "5f1a9c8b0000000001002f3a",
+        "red_id": "mint_ice",
+        "images": "https://sns-avatar-qc.xhscdn.com/avatar/5f1a9c8b?imageView2/2/w/120/format/webp"
+      },
+      "time": 1789869600,
+      "ip_location": "上海",
+      "view_count": 0,
+      "liked_count": 18234,
+      "comments_count": 412,
+      "collected_count": 9012,
+      "shared_count": 233,
+      "images_list": [
+        {
+          "url": "https://sns-img-qc.xhscdn.com/1040g00831aaa?imageView2/2/w/1080/format/webp&sign=77aa11&t=6ab3e9b4",
+          "url_size_large": "",
+          "original": "https://sns-img-qc.xhscdn.com/1040g00831aaa/original?imageView2/2/w/5000/format/webp&sign=77aa11",
+          "height": 1920,
+          "width": 1440
+        },
+        {
+          "url": "http://sns-i27-ae.rednotecdn.com/1040g00831bbb?imageView2/2/w/1080/format/webp&sign=88bb22",
+          "url_size_large": "",
+          "height": 1920,
+          "width": 1440
+        }
+      ],
+      "share_info": {
+        "link": "https://www.xiaohongshu.com/discovery/item/68c1f0a2000000001a02b7c1?xsec_token=ABxxxxxxxxxxxxxxxxxxxx&xsec_source=app_share",
+        "title": "油皮通勤底妆｜低饱和灰粉眼妆思路",
+        "content": "最近很喜欢的低饱和通勤妆。",
+        "image": "https://sns-img-qc.xhscdn.com/1040g00831aaa"
+      },
+      "video_info_v2": null,
+      "widgets_context": { "track_id": "abc" },
+      "biz_map": {},
+      "function_switch": {},
+      "media_save_config": {}
+    }
+  ],
+  "recordTime": null,
+  "requestId": "req-detail-0001"
+}

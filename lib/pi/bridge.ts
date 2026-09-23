@@ -55,13 +55,14 @@ export type PiEventSink = (event: AppSseEvent) => void | Promise<void>;
 // Skill 是行为的唯一来源：研究流程、输出格式和边界都写在 SKILL.md 及其 references 里，
 // 这里只保留运行时约束（可用工具、只读边界、脱敏），不重复技能内容。
 const DEFAULT_SYSTEM_PROMPT = `你是运行在 Pi Agent 中的小红书妆容研究助手。
-可用工具只有 \`read\`（读取技能与参考文件）和只读的 \`xhs_*\` MCP 工具；没有 bash、编辑、写入或发布工具。
+可用工具只有 \`read\`（读取技能与参考文件）和只读的 \`xhs_*\` 小红书数据源工具；没有 bash、编辑、写入或发布工具。
 \`read\` 只用于读取技能目录内的 SKILL.md、references/ 和 scripts/；不要读取 .env、密钥、Cookie、凭据或仓库里的其他文件，也不要把它们写进回答。
 每个请求都先按 <available_skills> 里的 location 用 \`read\` 读取匹配技能的 SKILL.md，再严格按该技能的工作流、输出格式和边界执行；技能内容与系统提示词冲突时以技能为准。技能引用的相对路径（references/、scripts/）按 SKILL.md 所在目录解析后再读取。
-回答用中文，只把工具实际返回的内容当作证据，说明真实样本量和失败限制；不要泄露 xsec_token、Cookie、Authorization 或带签名 URL。`;
+回答用中文，只把工具实际返回的内容当作证据，说明真实样本量和失败限制；不要泄露 xsec_token、Cookie、Authorization、API token 或完整请求 URL。笔记配图只使用工具返回的图片地址，不要自己拼链接或补签名参数。`;
 
 // pi 通过内置 read 工具按需加载 SKILL.md；白名单里没有 read，技能就无法进入上下文。
-const READ_ONLY_TOOL_ALLOWLIST = "read,xhs_check_login_status,xhs_search_feeds,xhs_get_feed_detail";
+// 工具名与数据源解耦：切换 XHS_SOURCE_MODE 时这份白名单不需要改。
+const READ_ONLY_TOOL_ALLOWLIST = "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail";
 
 const DEFAULT_SKILL_PATH = "xiaohongshu-makeup-advisor-latest";
 
@@ -102,7 +103,7 @@ export function sessionArgs(conversationId: string | undefined): string[] {
 
 export function buildPiArgs(options: PiBridgeOptions): string[] {
   const cwd = options.cwd ?? process.cwd();
-  const extensionPath = options.extensionPath ?? resolve(cwd, ".pi/extensions/xiaohongshu-mcp.ts");
+  const extensionPath = options.extensionPath ?? resolve(cwd, ".pi/extensions/xhs-source.ts");
   return [
     "--mode", "json",
     ...sessionArgs(options.conversationId),

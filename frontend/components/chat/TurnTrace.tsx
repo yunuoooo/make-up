@@ -12,9 +12,9 @@ type TurnTraceProps = {
 
 const TOOL_ICONS: Record<string, typeof Search> = {
   read: FileText,
-  xhs_search_feeds: Search,
-  xhs_get_feed_detail: Search,
-  xhs_check_login_status: ShieldCheck
+  xhs_search_notes: Search,
+  xhs_get_note_detail: Search,
+  xhs_source_status: ShieldCheck
 };
 
 /**

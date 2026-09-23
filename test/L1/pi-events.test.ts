@@ -113,14 +113,14 @@ test("maps Pi model and tool events to frontend-safe SSE events", () => {
     mapper.consume({
       type: "tool_execution_start",
       toolCallId: "call_1",
-      toolName: "xhs_search_feeds",
+      toolName: "xhs_search_notes",
       args: { keyword: "韩系氧气妆" }
     }),
     [{
       event: "tool_started",
       data: {
         toolCallId: "call_1",
-        toolName: "xhs_search_feeds",
+        toolName: "xhs_search_notes",
         summary: "搜索「韩系氧气妆」",
         args: { keyword: "韩系氧气妆" }
       }
@@ -153,23 +153,43 @@ test("streams the chain of thought and readable tool progress", () => {
 });
 
 test("summarizes what the agent saw", () => {
-  assert.equal(summarizeToolCall("xhs_get_feed_detail", { feed_id: "6a55ec72000000002103ddd5" }), "打开笔记 6a55ec72…");
-  assert.equal(summarizeToolCall("xhs_check_login_status", {}), "检查登录状态");
-  assert.equal(summarizeToolResult("xhs_search_feeds", textResult(JSON.stringify({ feeds: [{}, {}] }))), "返回 2 条笔记");
+  assert.equal(summarizeToolCall("xhs_get_note_detail", { noteId: "6a55ec72000000002103ddd5" }), "打开笔记 6a55ec72…");
+  assert.equal(summarizeToolCall("xhs_source_status", {}), "检查数据源状态");
+  // api 模式的受控形状。
+  assert.equal(summarizeToolResult("xhs_search_notes", textResult(JSON.stringify({ notes: [{}, {}] }))), "返回 2 条笔记");
   assert.equal(
-    summarizeToolResult("xhs_get_feed_detail", textResult(JSON.stringify({ data: { note: { title: "韩系氧气妆教程" } } }))),
+    summarizeToolResult("xhs_get_note_detail", textResult(JSON.stringify({ note: { title: "韩系氧气妆教程" } }))),
     "韩系氧气妆教程"
+  );
+  // mcp 回退链路仍是上游形状，两种都要认，否则切模式时过程区会退化成「2.0 KB」。
+  assert.equal(summarizeToolResult("xhs_search_notes", textResult(JSON.stringify({ feeds: [{}, {}, {}] }))), "返回 3 条笔记");
+  assert.equal(
+    summarizeToolResult("xhs_get_note_detail", textResult(JSON.stringify({ data: { note: { title: "韩系氧气妆教程" } } }))),
+    "韩系氧气妆教程"
+  );
+  // 工具层的拒绝不是故障：要显示成人话，不是「调用失败」。
+  assert.equal(
+    summarizeToolResult("xhs_search_notes", textResult(JSON.stringify({ reason: "quota-exhausted", message: "配额或余额不足" }))),
+    "上游配额用尽"
+  );
+  assert.equal(
+    summarizeToolResult("xhs_search_notes", textResult(JSON.stringify({ reason: "budget-exhausted", message: "已到上限" }))),
+    "已到本轮取数上限"
   );
   assert.equal(
     summarizeToolResult("read", textResult("x".repeat(2048))),
     "2.0 KB"
   );
   assert.equal(
-    summarizeToolResult("xhs_get_feed_detail", textResult("The operation was aborted due to timeout"), true),
+    summarizeToolResult("xhs_get_note_detail", textResult("The operation was aborted due to timeout"), true),
     "请求超时"
   );
   assert.equal(
-    summarizeToolResult("xhs_get_feed_detail", textResult("工具 get_feed_detail 执行时发生内部错误: context deadline exceeded"), true),
+    summarizeToolResult("xhs_get_note_detail", textResult("小红书取数配额或余额不足（上游 code=303）"), true),
+    "上游配额用尽"
+  );
+  assert.equal(
+    summarizeToolResult("xhs_get_note_detail", textResult("工具 get_feed_detail 执行时发生内部错误: context deadline exceeded"), true),
     "服务端超时"
   );
 });

@@ -47,7 +47,7 @@ test("builds an isolated Pi command for the read-only XHS runtime", () => {
     "--no-builtin-tools",
     "--extension", "/tmp/xiaohongshu-mcp.ts",
     "--skill", "/tmp/xiaohongshu-makeup-advisor-latest",
-    "--tools", "read,xhs_check_login_status,xhs_search_feeds,xhs_get_feed_detail",
+    "--tools", "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail",
     "--system-prompt", "只做只读小红书研究。",
     "--provider", "deepseek",
     "--model", "deepseek-chat",
@@ -88,16 +88,16 @@ test("loads the advisor skill through the read tool instead of the system prompt
   assert.equal(valueAfter("--skill"), resolveSkillPath({ cwd: process.cwd() }));
   assert.deepEqual(valueAfter("--tools").split(","), [
     "read",
-    "xhs_check_login_status",
-    "xhs_search_feeds",
-    "xhs_get_feed_detail"
+    "xhs_source_status",
+    "xhs_search_notes",
+    "xhs_get_note_detail"
   ]);
 
   // The system prompt must defer to the skill rather than restate its workflow.
   const systemPrompt = valueAfter("--system-prompt");
   assert.match(systemPrompt, /SKILL\.md/);
   assert.match(systemPrompt, /以技能为准/);
-  for (const inlined of ["首轮只调用一次 xhs_search_feeds", "最多读取一篇", "不要先调用 xhs_check_login_status"]) {
+  for (const inlined of ["首轮只调用一次 xhs_search_notes", "最多读取一篇", "不要先调用 xhs_source_status"]) {
     assert.ok(!systemPrompt.includes(inlined), `system prompt should not inline skill rule: ${inlined}`);
   }
 });

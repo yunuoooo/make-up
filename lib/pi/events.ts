@@ -191,33 +191,63 @@ export function summarizeToolCall(toolName: string, args: any): string {
   switch (toolName) {
     case "read":
       return `读取 ${fileName(value.path)}`;
-    case "xhs_search_feeds":
+    case "xhs_search_notes":
       return `搜索「${value.keyword ?? ""}」`;
-    case "xhs_get_feed_detail":
-      return `打开笔记 ${String(value.feed_id ?? "").slice(0, 8)}…`;
-    case "xhs_check_login_status":
-      return "检查登录状态";
+    case "xhs_get_note_detail":
+      return `打开笔记 ${String(value.noteId ?? "").slice(0, 8)}…`;
+    case "xhs_source_status":
+      return "检查数据源状态";
     default:
       return toolName;
   }
 }
+
+/**
+ * 工具主动拒绝时的说明（工具层闸门与空结果）。
+ *
+ * 这些不是故障——未知 noteId、预算用尽、没有搜索结果都是预期内的结果，
+ * 前端要显示成一句人话，而不是「调用失败」。
+ */
+const REFUSAL_LABELS: Record<string, string> = {
+  "not-configured": "数据源未配置",
+  "empty-result": "没有结果",
+  "budget-exhausted": "已到本轮取数上限",
+  "unknown-note": "笔记不在本轮搜索结果里",
+  "quota-exhausted": "上游配额用尽",
+  "auth-failed": "上游凭据失效",
+  "video-note": "视频笔记已跳过",
+  "unreadable-note": "这篇读不出来，已跳过",
+  "bad-argument": "参数不完整"
+};
 
 /** 把工具结果压缩成"看到了什么"：条数、标题、大小，或失败原因。 */
 export function summarizeToolResult(toolName: string, result: unknown, isError?: boolean): string {
   const text = toolText(result);
   if (isError) return failureReason(text);
 
-  if (toolName === "xhs_search_feeds") {
-    const feeds = parseJson(text)?.feeds;
-    return Array.isArray(feeds) ? `返回 ${feeds.length} 条笔记` : size(text);
+  const payload = parseJson(text);
+  if (typeof payload?.reason === "string") {
+    return REFUSAL_LABELS[payload.reason] ?? payload.reason;
   }
-  if (toolName === "xhs_get_feed_detail") {
-    const note = parseJson(text)?.data?.note;
+
+  if (toolName === "xhs_search_notes") {
+    // api 模式回 notes[]，mcp 回退链路仍然是上游的 feeds[]。
+    const notes = payload?.notes ?? payload?.feeds;
+    return Array.isArray(notes) ? `返回 ${notes.length} 条笔记` : size(text);
+  }
+  if (toolName === "xhs_get_note_detail") {
+    const note = payload?.note ?? payload?.data?.note;
     const title = typeof note?.title === "string" ? note.title : "";
     return title ? `${title.slice(0, 24)}${title.length > 24 ? "…" : ""}` : size(text);
   }
-  if (toolName === "xhs_check_login_status") {
-    return text.includes("已登录") ? text.split("\n")[0].slice(0, 40) : failureReason(text);
+  if (toolName === "xhs_source_status") {
+    if (payload?.mode === "api") {
+      const calls = payload.calls ?? {};
+      const limits = payload.limits ?? {};
+      return `api · search ${calls.search ?? 0}/${limits.searchPages ?? "?"} · detail ${calls.detail ?? 0}/${limits.detailLimit ?? "?"}`;
+    }
+    const message = typeof payload?.message === "string" ? payload.message : text;
+    return message.includes("已登录") ? message.split("\n")[0].slice(0, 40) : failureReason(message);
   }
   if (toolName === "read") {
     return size(text);
@@ -228,6 +258,8 @@ export function summarizeToolResult(toolName: string, result: unknown, isError?:
 function failureReason(text: string): string {
   if (/aborted due to timeout|timed out/i.test(text)) return "请求超时";
   if (/context deadline exceeded/i.test(text)) return "服务端超时";
+  if (/配额|余额|限额/.test(text)) return "上游配额用尽";
+  if (/凭据|权限不足/.test(text)) return "上游凭据失效";
   if (/笔记不可访问|无法浏览/.test(text)) return "笔记不可访问";
   return text.replace(/\s+/g, " ").slice(0, 80) || "调用失败";
 }
