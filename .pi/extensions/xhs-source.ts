@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { createXhsClient, XhsApiError, type XhsClient } from "../../lib/xhs/justoneapi.ts";
+import { createXhsClient, SHAPE_DRIFT_CODE, XhsApiError, type XhsClient } from "../../lib/xhs/tikhub.ts";
 import { createMcpSource, type McpSource } from "../../lib/xhs/mcp-source.ts";
 import type { XhsNoteDetail, XhsNoteSummary } from "../../lib/xhs/types.ts";
 
@@ -13,7 +13,7 @@ import type { XhsNoteDetail, XhsNoteSummary } from "../../lib/xhs/types.ts";
  *   技能是行为引导，模型可以忽略；工具层是硬拦，模型绕不过去。
  * - 失败返回可读文本并带上 `reason`，让模型能按技能要求如实说明样本量和限制。
  *
- * 端点、字段、错误码一律见 docs/specs/09-24-justoneapi-xhs-ssot.md；
+ * 端点、字段、错误码一律见 docs/specs/09-24-tikhub-xhs-ssot.md；
  * 架构决策与改动面见 docs/specs/09-24-xhs-api-integration.md。
  */
 
@@ -33,6 +33,10 @@ type TurnState = {
   upstreamMs: number;
   /** 配额、余额、凭据这类问题一旦出现就整批停止——重试只会继续烧配额。 */
   stopped: Refusal | null;
+  /** 上游「报成功却没内容」的连续次数；连续两篇就停止开新笔记（采集侧的问题，换篇也没用）。 */
+  consecutiveEmptyDetails: number;
+  /** 采集侧失败后只停详情，不停搜索——搜索本身是好的，没必要把整轮掐死。 */
+  detailStopped: Refusal | null;
 };
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -68,6 +72,26 @@ function rememberFeeds(state: TurnState, text: string): void {
     }
   } catch {
     // 解析不出来就不记：类型未知时按原样放行，不因为解析失败而误拦（旧行为不变）。
+  }
+}
+
+/**
+ * mcp 回退链路的图文过滤：`search_feeds` 没有类型参数，只能在返回里筛。
+ *
+ * 只丢**明确是 video** 的条目，类型未知一律放行——两害相权：混进一条视频笔记的代价是
+ * 模型读到一张只有封面的笔记，而误丢未知类型的代价可能是整轮 0 条候选。解析失败更是
+ * 原样透传，绝不让一次形状变化把结果清空。
+ */
+function onlyNormalFeeds(state: TurnState, text: string): { text: string; dropped: number } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed?.feeds)) return { text, dropped: 0 };
+    const normal = parsed.feeds.filter((feed: any) => feed?.noteCard?.type !== "video");
+    const dropped = parsed.feeds.length - normal.length;
+    if (dropped === 0) return { text, dropped: 0 };
+    return { text: JSON.stringify({ ...parsed, feeds: normal }), dropped };
+  } catch {
+    return { text, dropped: 0 };
   }
 }
 
@@ -108,6 +132,10 @@ function detailShape(note: XhsNoteDetail): Record<string, unknown> {
 /** 上游失败 → 可读文本 + 停止标记。不把请求 URL 或凭据带进任何信息。 */
 function apiFailure(state: TurnState, error: unknown): Error {
   if (error instanceof XhsApiError) {
+    if (error.code === SHAPE_DRIFT_CODE) {
+      // 信封正常、只是字段不认识：重试和换 token 都没用，把上游字段名原样交给模型和维护者。
+      return new Error(`小红书取数读不出正文：${error.message}。这不是网络或权限问题，换一篇；多篇都这样就是上游改了字段。`);
+    }
     if (error.quotaLimited) {
       state.stopped = { reason: "quota-exhausted", message: "配额或余额不足" };
       return new Error(
@@ -142,7 +170,9 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
     searchCalls: 0,
     detailCalls: 0,
     upstreamMs: 0,
-    stopped: null
+    stopped: null,
+    consecutiveEmptyDetails: 0,
+    detailStopped: null
   };
 
   let client: XhsClient | null = null;
@@ -170,6 +200,7 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
   /** 所有闸门的唯一入口：按顺序判，先满足的先拒。 */
   function blocked(kind: "search" | "detail", noteId?: string): Refusal | null {
     if (state.stopped) return state.stopped;
+    if (kind === "detail" && state.detailStopped) return state.detailStopped;
     if (mode === "unavailable") {
       return {
         reason: "not-configured",
@@ -213,12 +244,13 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
   }
 
   const searchDescription = mode === "mcp"
-    ? "在小红书按关键词搜索笔记，返回笔记卡片（标题、作者、类型、互动数、封面）。"
-      + "结果里 noteCard.type 为 normal 的是图文笔记，video 是视频笔记。"
-      + "搜索只负责定位；**搜索卡片不是正文**，要读正文请用 xhs_get_note_detail。"
-    : "在小红书按关键词搜索笔记，返回标题、作者、发布时间、互动数、封面，以及一段约 60 字的**截断预览**。"
+    ? "在小红书按关键词搜索**图文笔记**（视频笔记已在本工具里过滤掉），返回笔记卡片"
+      + "（标题、作者、类型、互动数、封面）。搜索只负责定位；**搜索卡片不是正文**，要读正文请用 xhs_get_note_detail。"
+      + "搜不到结果时换关键词，不要指望放宽笔记类型。"
+    : "在小红书按关键词搜索**图文笔记**（服务端按 note_type=普通笔记 过滤，视频笔记不会出现），"
+      + "返回标题、作者、发布时间、互动数、封面，以及一段约 60 字的**截断预览**。"
       + "预览不是正文，任何情况下都不能当正文用；要读正文请用 xhs_get_note_detail。"
-      + "搜索只负责定位，用来决定打开哪几篇。";
+      + "搜索只负责定位，用来决定打开哪几篇；搜不到就换关键词。";
 
   const detailDescription = mode === "mcp"
     ? "读取一篇笔记的详情。**本地约束：只对本轮搜索结果里 noteCard.type 为 normal 的图文笔记调用。**"
@@ -249,7 +281,7 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
         content: [{
           type: "text",
           text: jsonText({
-            source: mode === "api" ? "justoneapi" : "none",
+            source: mode === "api" ? "tikhub" : "none",
             mode,
             configured,
             limits: { searchPages, detailLimit, budgetSeconds: Math.round(budgetMs / 1000) },
@@ -293,7 +325,12 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
           state.searchCalls += 1;
           // 搜索结果同时是笔记类型的来源：记下来，详情才知道该不该拦。
           rememberFeeds(state, text);
-          return { content: [{ type: "text", text }], details: details() };
+          // 图文限定在服务端做不到（MCP 没有类型参数），只能在返回里筛。
+          const normal = onlyNormalFeeds(state, text);
+          return {
+            content: [{ type: "text", text: normal.text }],
+            details: details(normal.dropped > 0 ? { videoNotesFiltered: normal.dropped } : {})
+          };
         } catch (error) {
           throw apiFailure(state, error);
         }
@@ -307,7 +344,7 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
           content: [{
             type: "text",
             text: jsonText({
-              source: "justoneapi",
+              source: "tikhub",
               mode,
               page: result.page,
               hasMore: result.hasMore,
@@ -371,10 +408,26 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
         const note = await timed(() => client!.getNoteDetail(noteId));
         state.detailCalls += 1;
         if (!note) {
-          return refusal({ reason: "empty-result", message: `笔记 ${noteId} 没有返回详情内容，换下一篇。` });
+          // 上游「报成功却没内容」，与「字段不认识」是两回事：这条是采集侧，那条是契约侧。
+          // 客户端已经免费重试过一次（失败不计费），所以这里还没有内容就不是偶发了。
+          state.consecutiveEmptyDetails += 1;
+          if (state.consecutiveEmptyDetails >= 2) {
+            state.detailStopped = {
+              reason: "collection-failed",
+              message: "上游连续两篇都报成功却没有内容——这是采集侧的问题，不是这些笔记的问题，"
+                + "而且每次这样的调用都已计费。不要再打开新笔记，按已经拿到的搜索结果如实说明样本不足。"
+            };
+            return refusal(state.detailStopped);
+          }
+          return refusal({
+            reason: "empty-result",
+            // TikHub 是「响应即计费」：这种成功响应里没有内容的调用也花过钱，文案要说清。
+            message: `笔记 ${noteId} 上游返回的成功响应里没有内容（这一次调用已计费），换下一篇。`
+          });
         }
+        state.consecutiveEmptyDetails = 0;
         return {
-          content: [{ type: "text", text: jsonText({ source: "justoneapi", mode, note: detailShape(note) }) }],
+          content: [{ type: "text", text: jsonText({ source: "tikhub", mode, note: detailShape(note) }) }],
           details: details()
         };
       } catch (error) {

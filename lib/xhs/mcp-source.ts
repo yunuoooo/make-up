@@ -4,7 +4,7 @@ import { access } from "node:fs/promises";
 /**
  * 本地 `xiaohongshu-mcp` 的传输层：**迁移期的回退路径**，`XHS_SOURCE_MODE=mcp` 时使用。
  *
- * 取数正路是 Just One API（同目录的 justoneapi.ts）；这条链路在上游缺陷清账（spec
+ * 取数正路是 TikHub（同目录的 tikhub.ts）；这条链路在上游缺陷清账（spec
  * `09-24-xhs-api-integration.md` 第 10 节的 Phase D）时整体删除。它只做传输——
  * 工具名、闸门和给模型看的文案都在 `.pi/extensions/xhs-source.ts`。
  */
@@ -56,7 +56,7 @@ export function createMcpSource(options: McpSourceOptions = {}): McpSource {
   const timeoutMs = Number(env.XHS_MCP_REQUEST_TIMEOUT_SECONDS ?? 45) * 1000;
 
   // 上游的 Chromium 驱动是有状态的，两个页面操作重叠就会超时——串行执行，
-  // 与 Just One API 那条无状态链路不同（那边不需要队列）。
+  // 与 TikHub 那条无状态链路不同（那边不需要队列）。
   let toolQueue = Promise.resolve();
 
   async function executeSerially<T>(operation: () => Promise<T>): Promise<T> {

@@ -1,8 +1,8 @@
 /**
  * 小红书取数的内部类型：技能和工具层只认这里的字段。
  *
- * 上游字段名、取值链和映射规则见 docs/specs/09-24-justoneapi-xhs-ssot.md 第 10 节；
- * 换供应商时改的是映射实现（同目录的 justoneapi.ts），不是这些类型。
+ * 上游字段名、取值链和映射规则见 docs/specs/09-24-tikhub-xhs-ssot.md 第 8 节；
+ * 换供应商时改的是映射实现（同目录的 tikhub.ts），不是这些类型。
  */
 
 export type XhsNoteStats = {
@@ -58,7 +58,7 @@ export type XhsCallInfo = {
   endpoint: "search" | "detail";
   durationMs: number;
   ok: boolean;
-  /** 业务码（SSOT 第 4 节）；-1 表示没拿到信封（网络错误、超时）。 */
+  /** 业务码（SSOT 第 4 节）；负数是我们自己的：-1 没拿到信封，-2 信封正常但形状读不出内容。 */
   code?: number;
   /** 上游 requestId，用于对账。 */
   requestId?: string;

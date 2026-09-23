@@ -1,0 +1,93 @@
+{
+  "_note": "结构取自 docs/specs/09-24-tikhub-xhs-ssot.md 第 5 节的**真实样例**（就是 2026-09-24 那次 badcase 的笔记：Just One 对该篇返回空 data，TikHub 拿到了全文）。所有 token 一律换成假值 TEST_TOKEN：原文的 share_info / mini_program_info / qq_mini_program_info 里都带真 xsec_token，这里替换掉，并让测试断言它们不会出现在映射结果里。页内状态字段保留了一部分，用来验证映射层会忽略它们。",
+  "code": 200,
+  "request_id": "req-fixture-detail-0001",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "router": "/api/v1/xiaohongshu/app_v2/get_image_note_detail",
+  "params": { "note_id": "6a9a3b6a000000001103860e", "share_text": "" },
+  "data": {
+    "code": 0,
+    "success": true,
+    "msg": "成功",
+    "data": [
+      {
+        "note_list": [
+          {
+            "id": "6a9a3b6a000000001103860e",
+            "title": "2026年6大主流爆款妆容之五：韩系氧气妆",
+            "desc": "五、韩系松弛氧气妆（韩系博主、日常通勤、领证写真爆款）\n\t\n风格核心：\n松弛无刻意感，大面积氛围感腮红，清透水光肌，柔和浅色系，慵懒少女感。\n\t\n完整分步教程：\n1.\t底妆：清透水光呼吸肌\n￮\t保湿妆前打底，水润轻薄粉底液，保留皮肤自然光泽。\n￮\t只 T 区定妆，面中、脸颊保留水光感，哑光高光整理泪沟、法令纹。\n2.\t眉毛：浅棕平柔眉\n￮\t平缓微落眉，无明显眉峰，毛流蓬松，浅棕 / 灰棕色，柔和减龄。\n3.\t眼妆：灰棕淡消肿\n￮\t冷调灰棕铺眼窝消肿，仅睫毛根部加深，不用艳丽色彩。\n4.\t修容：极简淡修\n￮\t鼻侧余粉轻扫，下颌几乎不修，保留脸部饱满圆润感。\n5.\t腮红 & 唇妆（妆容灵魂）\n￮\t牛奶蜜桃、浅杏色腮红大面积扫眼下、面中，带过鼻尖、下巴，营造通透血色。\n\t\n避坑要点：\n❌ 不要厚重哑光底妆、深色挑眉、大面积深色修容、土棕暗唇。#珠海化妆师[话题]##化妆教程[话题]##化妆分享[话题]##韩妆教程[话题]# #韩式妆容[话题]# #韩式妆造[话题]#",
+            "type": "normal",
+            "user": {
+              "nickname": "知书达丽girl",
+              "name": "知书达丽girl",
+              "userid": "606e3c58000000000101fe60",
+              "red_id": "9520398615",
+              "image": "https://sns-avatar-qc.rednotecdn.com/avatar/606e3cc3d5a5ae4e4bf8d755.jpg?imageView2/2/w/80/format/jpg"
+            },
+            "time": 1788492650,
+            "ip_location": "Guangdong",
+            "liked_count": 1,
+            "comments_count": 0,
+            "collected_count": 1,
+            "shared_count": 0,
+            "view_count": 0,
+            "hash_tag": [
+              { "id": "5ccbd04a000000000e02a009", "name": "珠海化妆师", "type": "topic", "record_count": 0 },
+              { "id": "547d4f1cd6e4a976686c8d9f", "name": "化妆教程", "type": "topic", "record_count": 0 },
+              { "id": "5c3ecbe9000000000d00cee7", "name": "化妆分享", "type": "topic", "record_count": 0 },
+              { "id": "6177a98200000000010095d3", "name": "韩妆教程", "type": "topic", "record_count": 0 },
+              { "id": "53e73781b4c4d65b90ced886", "name": "韩式妆容", "type": "topic", "record_count": 0 },
+              { "id": "61113df1000000000101fd89", "name": "韩式妆造", "type": "topic", "record_count": 0 }
+            ],
+            "images_list": [
+              {
+                "index": 0,
+                "url_size_large": "https://sns-i11.rednotecdn.com/1040g008324m9vpcu6u605o3e7hc0bvj035oahsg?imageView2/2/w/1440/format/webp&ap=1&sc=DETAIL&sign=FAKESIGN&t=6ab4331b",
+                "url": "https://sns-i11.rednotecdn.com/1040g008324m9vpcu6u605o3e7hc0bvj035oahsg?imageView2/2/w/576/format/heif/q/87&ap=1&sc=PREVIEW&sign=FAKESIGN&t=6ab4331b",
+                "original": "https://sns-i11.rednotecdn.com/1040g008324m9vpcu6u605o3e7hc0bvj035oahsg?imageView2/2/w/5000/h/5000/format/webp/q/90&sc=ORIGINAL&sign=FAKESIGN",
+                "url_multi_level": {
+                  "low": "https://sns-i11.rednotecdn.com/1040g008324m9vpcu6u605o3e7hc0bvj035oahsg?imageView2/2/w/576/format/webp/q/75&sign=FAKESIGN",
+                  "high": "https://sns-i11.rednotecdn.com/1040g008324m9vpcu6u605o3e7hc0bvj035oahsg?imageView2/2/w/576/format/webp/q/75&sign=FAKESIGN"
+                },
+                "width": 1200,
+                "height": 1600,
+                "fileid": "1040g008324m9vpcu6u605o3e7hc0bvj035oahsg"
+              }
+            ],
+            "share_info": {
+              "link": "https://www.xiaohongshu.com/discovery/item/6a9a3b6a000000001103860e?xsec_source=app_share&xsec_token=TEST_TOKEN",
+              "title": "2026年6大主流爆款妆容之五：韩系氧气妆",
+              "content": "五、韩系松弛氧气妆（韩系博主、日常通勤、领证写真爆款）",
+              "image": "http://sns-img-qc.xhscdn.com/1040g008324m9vpcu6u605o3e7hc0bvj035oahsg?imageView2/2/w/360/format/jpg/q/75"
+            },
+            "mini_program_info": {
+              "title": "@知书达丽girl 发了一篇笔记，快点来看吧！",
+              "path": "pages/main/home/index?redirect_path=%2Fpages%2Fmain%2Fnote%2Findex%3Fxsec_token%3DTEST_TOKEN",
+              "desc": "五、韩系松弛氧气妆（韩系博主、日常通勤、领证写真爆款）"
+            },
+            "qq_mini_program_info": {
+              "path": "pages/main/note/index?id=6a9a3b6a000000001103860e&xsec_token=TEST_TOKEN"
+            },
+            "widgets_context": "{\"author_id\":\"606e3c58000000000101fe60\",\"author_name\":\"知书达丽girl\"}",
+            "biz_map": {},
+            "media_save_config": { "disable_save": false, "disable_watermark": false },
+            "feedback_info": { "dislike_status": 0 },
+            "liked": false,
+            "collected": false,
+            "followed": false,
+            "model_type": "note",
+            "pre_view_count": -1,
+            "last_update_time": 0
+          }
+        ],
+        "comment_list": [],
+        "model_type": "note",
+        "track_id": "",
+        "user": { "nickname": "知书达丽girl", "userid": "606e3c58000000000101fe60" }
+      }
+    ],
+    "debug_id": "ddd6c242"
+  }
+}

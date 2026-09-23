@@ -11,12 +11,12 @@ import xhsSourceExtension from "../../.pi/extensions/xhs-source.ts";
  * - **mcp（迁移期回退）**：老行为不能变——视频笔记拦在本地不发请求、未知 feed_id 照旧放行、
  *   读不出来的笔记不重复撞超时。唯一的变化是 `xsec_token` 由扩展内部补，不再经模型上下文。
  *
- * 全部用假的端点跑，不依赖真实的小红书服务或 Just One API。
+ * 全部用假的端点跑，不依赖真实的小红书服务或 TikHub。
  */
 
 type Reply = { status?: number; body: unknown };
 
-/** 同时兜住 MCP 的 JSON-RPC 与 Just One API 的 HTTP 两种上游。 */
+/** 同时兜住 MCP 的 JSON-RPC 与 TikHub 的 HTTP 两种上游。 */
 function stubFetch(handlers: {
   mcp?: (method: string, params: any) => unknown;
   http?: (url: URL) => Reply;
@@ -36,7 +36,7 @@ function stubFetch(handlers: {
     }
 
     calls.push(`GET ${url.pathname}`);
-    const reply = handlers.http?.(url) ?? { body: { code: 0, data: {} } };
+    const reply = handlers.http?.(url) ?? { body: { code: 200, data: { code: 0, success: true, msg: "成功", data: [] } } };
     return new Response(JSON.stringify(reply.body), {
       status: reply.status ?? 200,
       headers: { "content-type": "application/json" }
@@ -95,17 +95,49 @@ let cachedFixtures: { search: any; detail: any } | null = null;
 async function fixtures() {
   if (!cachedFixtures) {
     cachedFixtures = {
-      search: JSON.parse(await readFile("test/L1/fixtures/xhs-search-v4.json", "utf8")),
-      detail: JSON.parse(await readFile("test/L1/fixtures/xhs-detail-v6.json", "utf8"))
+      search: JSON.parse(await readFile("test/L1/fixtures/xhs-tikhub-search.json", "utf8")),
+      detail: JSON.parse(await readFile("test/L1/fixtures/xhs-tikhub-detail.json", "utf8"))
     };
   }
   return cachedFixtures;
 }
 
+/** TikHub 的两层信封：外层 code 是 HTTP 语义（200 才算过），内层 code=0 / success=true 才是业务成功。 */
+const envelope = (inner: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+  code: 200,
+  request_id: "req-test-0001",
+  message_zh: "请求成功，本次请求将被计费。",
+  data: { code: 0, success: true, msg: "成功", ...inner },
+  ...extra
+});
+
+/**
+ * 真实搜索 fixture 的 20 条里没有详情 fixture 那篇（两次搜索关键词不同），而 noteId 闸门要求
+ * 详情只能打开**本轮搜索返回过**的笔记。所以这里给搜索结果补一条最小条目，让「先搜索再打开」
+ * 这条链在测试里成立——补进去的字段名与真实形状一致（`items[].note`）。
+ */
+async function searchWithDetailNote(): Promise<any> {
+  const { search } = await fixtures();
+  const patchedItem = {
+    model_type: "note",
+    note: {
+      id: "6a9a3b6a000000001103860e",
+      title: "2026年6大主流爆款妆容之五：韩系氧气妆",
+      type: "normal",
+      user: { nickname: "知书达丽girl" },
+      timestamp: 1788492650
+    }
+  };
+  return {
+    ...search,
+    data: { ...search.data, data: { ...search.data.data, items: [...search.data.data.items, patchedItem] } }
+  };
+}
+
 const API_ENV = {
   XHS_SOURCE_MODE: "api",
   XHS_API_TOKEN: "test-token-1234",
-  XHS_API_BASE_URL: "https://api.justoneapi.com",
+  XHS_API_BASE_URL: "https://api.tikhub.io",
   XHS_API_TIMEOUT_SECONDS: "5",
   XHS_API_SEARCH_PAGES: "2",
   XHS_API_DETAIL_LIMIT: "2",
@@ -118,30 +150,34 @@ const MCP_ENV = {
 };
 
 test("api：搜索与详情走受控形状，正文只从详情来", async () => {
-  const { search, detail } = await fixtures();
-  const stub = stubFetch({ http: (url) => url.pathname.includes("search-note") ? { body: search } : { body: detail } });
+  const { detail } = await fixtures();
+  const search = await searchWithDetailNote();
+  const stub = stubFetch({ http: (url) => url.pathname.includes("search_notes") ? { body: search } : { body: detail } });
   try {
     const tools = await start(API_ENV);
     assert.deepEqual([...tools.keys()].sort(), ["xhs_get_note_detail", "xhs_search_notes", "xhs_source_status"]);
 
     const searched = await tools.get("xhs_search_notes")!.execute("c1", { keyword: "通勤妆 教程" });
     const searchPayload = JSON.parse(searched.content[0].text);
-    assert.equal(searchPayload.source, "justoneapi");
+    assert.equal(searchPayload.source, "tikhub");
     assert.equal(searchPayload.mode, "api");
-    assert.equal(searchPayload.notes.length, 2);
-    assert.equal(searchPayload.notes[0].noteId, "68c1f0a2000000001a02b7c1");
+    // 真实 fixture 3 条 + 为「先搜后开」补的 1 条。
+    assert.equal(searchPayload.notes.length, 4);
+    assert.equal(searchPayload.notes[0].noteId, "6ab3a964000000001301ac36", "真实条目：items[].note 平铺");
+    assert.equal(searchPayload.notes[0].authorName, "yuixuu.");
+    assert.ok(searchPayload.notes.some((note: any) => note.noteId === "6a9a3b6a000000001103860e"));
     assert.ok(
-      !JSON.stringify(searchPayload).includes("兰蔻"),
-      "搜索结果不能带正文内容——只有约 60 字的截断预览"
+      !JSON.stringify(searchPayload).includes("完整分步教程"),
+      "搜索结果不能带正文内容——只有截断预览"
     );
     assert.ok(!searched.content[0].text.includes("test-token-1234"));
     assert.equal(searched.details.mode, "api");
     assert.deepEqual(searched.details.calls, { search: 1, detail: 0 });
 
-    const opened = await tools.get("xhs_get_note_detail")!.execute("c2", { noteId: "68c1f0a2000000001a02b7c1" });
+    const opened = await tools.get("xhs_get_note_detail")!.execute("c2", { noteId: "6a9a3b6a000000001103860e" });
     const detailPayload = JSON.parse(opened.content[0].text);
-    assert.match(detailPayload.note.text, /兰蔻菁纯臻颜精华粉底液 BO-01/);
-    assert.deepEqual(detailPayload.note.tags, ["低饱和妆容", "通勤妆"]);
+    assert.match(detailPayload.note.text, /完整分步教程/);
+    assert.deepEqual(detailPayload.note.tags.slice(0, 2), ["珠海化妆师", "化妆教程"]);
     assert.equal(detailPayload.note.truncated, false);
     assert.ok(!opened.content[0].text.includes("xsec_token"), "xsec_token 不能进模型上下文");
     assert.deepEqual(opened.details.calls, { search: 1, detail: 1 });
@@ -168,16 +204,17 @@ test("api：未知 noteId 直接拒绝，一次请求都不发", async () => {
 });
 
 test("api：详情预算用尽后再要一篇就被拒，不发请求", async () => {
-  const { search, detail } = await fixtures();
-  const stub = stubFetch({ http: (url) => url.pathname.includes("search-note") ? { body: search } : { body: detail } });
+  const { detail } = await fixtures();
+  const search = await searchWithDetailNote();
+  const stub = stubFetch({ http: (url) => url.pathname.includes("search_notes") ? { body: search } : { body: detail } });
   try {
     // 上限 1 篇：读完第一条之后再读第二条必须被拦。
     const tools = await start({ ...API_ENV, XHS_API_DETAIL_LIMIT: "1" });
     await tools.get("xhs_search_notes")!.execute("c1", { keyword: "通勤妆" });
-    await tools.get("xhs_get_note_detail")!.execute("c2", { noteId: "68c1f0a2000000001a02b7c1" });
+    await tools.get("xhs_get_note_detail")!.execute("c2", { noteId: "6a9a3b6a000000001103860e" });
     const before = stub.calls.length;
 
-    const refused = await tools.get("xhs_get_note_detail")!.execute("c3", { noteId: "68c1f0a2000000001a02b7c2" });
+    const refused = await tools.get("xhs_get_note_detail")!.execute("c3", { noteId: "68c1f0a2000000001a02b7c1" });
     assert.equal(stub.calls.length, before, "超预算不能发请求");
     assert.equal(refused.details.reason, "budget-exhausted");
     assert.match(JSON.parse(refused.content[0].text).message, /详情篇数上限（1 篇）/);
@@ -206,12 +243,12 @@ test("api：没配 token 时三个工具都降级说明，不发请求", async (
 });
 
 test("api：配额码出现即整批停止，后续调用不再发请求", async () => {
-  const stub = stubFetch({ http: () => ({ body: { code: 303, message: "quota exceeded" } }) });
+  const stub = stubFetch({ http: () => ({ status: 429, body: { code: 429, message_zh: "超出套餐额度" } }) });
   try {
     const tools = await start(API_ENV);
     await assert.rejects(
       () => tools.get("xhs_search_notes")!.execute("c1", { keyword: "通勤妆" }),
-      /配额或余额不足/
+      /额度|限流|配额/
     );
     assert.equal(stub.calls.length, 1);
 
@@ -304,6 +341,85 @@ test("mcp：读超时的笔记会被记住，第二次不再撞同一个超时�
     assert.match(JSON.parse(second.content[0].text).message, /其他笔记/);
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+test("api：上游形状读不出内容时，报错要带上上游字段名", async () => {
+  // 2026-09-24 的线上 badcase：详情响应里没有 id，整篇被静默丢掉，对外只有「没有结果」。
+  const noteId = "6a9a3b6a000000001103860e";
+  const stub = stubFetch({ http: (url) => url.pathname.includes("search_notes")
+    // 先让搜索真返回这条，否则会被 noteId 闸门拦掉，测不到详情那一段。
+    ? { body: envelope({ data: { items: [{ id: noteId, note_card: { display_title: "韩系松弛氧气妆", type: "normal" } }] } }) }
+    : { body: envelope({ data: [{ note_list: [{ some_renamed_field: "x" }] }] }) } });
+  try {
+    const tools = await start(API_ENV);
+    await tools.get("xhs_search_notes")!.execute("c1", { keyword: "韩系氧气妆" });
+    await assert.rejects(
+      () => tools.get("xhs_get_note_detail")!.execute("c2", { noteId }),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        assert.match(message, /some_renamed_field/, "字段名要进错误信息，下一次一眼能看出是上游改了字段");
+        assert.match(message, /不是网络或权限问题/);
+        return true;
+      }
+    );
+  } finally {
+    stub.restore();
+  }
+});
+
+test("api：连续两篇空 data 后不再打开新笔记，但搜索照常", async () => {
+  const stub = stubFetch({ http: (url) => url.pathname.includes("search_notes")
+    ? { body: envelope({ data: { items: [
+      { id: "n1", note_card: { display_title: "T1", type: "normal" } },
+      { id: "n2", note_card: { display_title: "T2", type: "normal" } },
+      { id: "n3", note_card: { display_title: "T3", type: "normal" } }
+    ] } }) }
+    : { body: envelope({ data: [] }) } });
+  try {
+    const tools = await start(API_ENV);
+    await tools.get("xhs_search_notes")!.execute("c1", { keyword: "韩系氧气妆" });
+    const detailCalls = () => stub.calls.filter((call) => call.includes("get_image_note_detail")).length;
+
+    assert.equal((await tools.get("xhs_get_note_detail")!.execute("c2", { noteId: "n1" })).details.reason, "empty-result");
+    assert.equal(detailCalls(), 1, "TikHub 响应即计费：空内容也不重试（重试等于再付一次）");
+    assert.equal((await tools.get("xhs_get_note_detail")!.execute("c3", { noteId: "n2" })).details.reason, "collection-failed");
+
+    const before = detailCalls();
+    const third = await tools.get("xhs_get_note_detail")!.execute("c4", { noteId: "n3" });
+    assert.equal(third.details.reason, "collection-failed");
+    assert.equal(detailCalls(), before, "采集侧失败后不许再发详情请求——一轮 6 篇 × 20 秒就是白烧");
+    assert.match(JSON.parse(third.content[0].text).message, /采集侧的问题/);
+
+    // 搜索本身是好的，不该被一起掐死。
+    await tools.get("xhs_search_notes")!.execute("c5", { keyword: "换个关键词" });
+    assert.ok(stub.calls.filter((call) => call.includes("search_notes")).length >= 2);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("mcp：搜索返回里的视频条目被过滤掉，类型未知的条目保留", async () => {
+  const feeds = [
+    { id: "n1", noteCard: { type: "normal", displayTitle: "图文" } },
+    { id: "v1", noteCard: { type: "video", displayTitle: "视频" } },
+    { id: "u1", displayTitle: "类型未知" }
+  ];
+  const stub = stubFetch({
+    mcp: (_method, params) => params?.name === "search_feeds"
+      ? { content: [{ type: "text", text: JSON.stringify({ feeds, has_more: true }) }] }
+      : {}
+  });
+  try {
+    const tools = await start(MCP_ENV);
+    const result = await tools.get("xhs_search_notes")!.execute("c1", { keyword: "通勤妆" });
+    const payload = JSON.parse(result.content[0].text);
+    // 视频：丢掉。未知类型：留着——误丢未知类型的代价可能是整轮 0 条候选。
+    assert.deepEqual(payload.feeds.map((feed: any) => feed.id), ["n1", "u1"]);
+    assert.equal(payload.has_more, true, "过滤只动 feeds，其余字段原样保留");
+    assert.equal(result.details.videoNotesFiltered, 1, "丢了几条要能被观测到");
+  } finally {
+    stub.restore();
   }
 });
 

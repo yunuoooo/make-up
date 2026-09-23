@@ -1,0 +1,186 @@
+{
+ "_note": "**真实响应**（2026-09-24 实调）：形状是 `data.data.items[].note{…}`，笔记字段平铺（不是 note_card）。这份 fixture 保留真实结构与字段名，但**所有 token 与签名参数都换成了假值**（xsec_token → TEST_TOKEN，sign/t → FAKESIGN/FAKE）。视频条目取自同一次响应的 20 条，用来验证映射层会丢掉它。",
+ "code": 200,
+ "request_id": "req-fixture-search-real",
+ "message": "Request successful. This request will incur a charge.",
+ "message_zh": "请求成功，本次请求将被计费。",
+ "router": "/api/v1/xiaohongshu/app_v2/search_notes",
+ "params": {
+  "keyword": "韩系氧气妆 教程",
+  "page": "1",
+  "note_type": "普通笔记"
+ },
+ "data": {
+  "code": 0,
+  "success": true,
+  "msg": "成功",
+  "search_id": "433cbfa831a34695@88a34e8d26634c06",
+  "search_session_id": "49fc0a65077d4c85b6430e33a72b9c98",
+  "page": 1,
+  "next_page": 2,
+  "debug_id": "25da56d2",
+  "data": {
+   "items": [
+    {
+     "mix_track_id": "NOTE__6ab3a964000000001301ac36__433cbfa831a34695@88a34e8d26634c06__韩系氧气妆 教程",
+     "new_help_style": false,
+     "model_type": "note",
+     "note": {
+      "shared_count": 0,
+      "geo_info": {
+       "distance": ""
+      },
+      "liked": false,
+      "title": "🤍清透韩系氧气感眼妆！保姆级教程",
+      "click_score": 0.01776045747101307,
+      "result_from": "",
+      "collected_count": 8,
+      "collected": false,
+      "nice_count": 0,
+      "comments_count": 0,
+      "niced": false,
+      "images_list": [
+       {
+        "fileid": "spectrum/1040g0k0325f3cgvekc105qkdcv651h00cmrn6ro",
+        "height": 1660,
+        "url": "https://sns-na-i11.xhscdn.com/spectrum/1040g0k0325f3cgvekc105qkdcv651h00cmrn6ro?imageView2/2/w/576/format/webp/q/87%7CimageMogr2/strip&redImage/frame/0&ap=5&sc=SRH_PRV&sign=FAKESIGN&t=FAKE",
+        "width": 1242,
+        "original": "",
+        "url_size_large": "https://sns-na-i11.xhscdn.com/spectrum/1040g0k0325f3cgvekc105qkdcv651h00cmrn6ro?imageView2/2/w/1440/format/webp&ap=5&sc=SRH_DTL&sign=FAKESIGN&t=FAKE",
+        "trace_id": "spectrum/1040g0k0325f3cgvekc105qkdcv651h00cmrn6ro",
+        "need_load_original_image": false
+       }
+      ],
+      "type": "normal",
+      "id": "6ab3a964000000001301ac36",
+      "user": {
+       "red_official_verified": false,
+       "userid": "6a8d67cc000000001400c400",
+       "red_id": "63686763111",
+       "nickname": "yuixuu.",
+       "followed": false,
+       "red_official_verify_type": 0,
+       "track_duration": 0,
+       "images": "https://sns-avatar-qc.xhscdn.com/avatar/1040g2jo324d849l2na0g5qkdcv651h002l0e1s8?imageView2/2/w/80/format/jpg",
+       "show_red_official_verify_icon": false
+      },
+      "timestamp": 1790159204,
+      "extract_text_enabled": 0,
+      "liked_count": 23,
+      "update_time": 1790159250000,
+      "desc": "今日妆教是清透韩系妆容！ 韩系学妹感一秒get～ 老婆们画起来🤳 （详细步骤在P4哦！） 1️⃣佩戴美瞳是眼妆的基础",
+      "xsec_token": "TEST_TOKEN",
+      "last_update_time": 0,
+      "has_music": false
+     }
+    },
+    {
+     "mix_track_id": "NOTE__69ba4402000000002102c447__433cbfa831a34695@88a34e8d26634c06__韩系氧气妆 教程",
+     "new_help_style": false,
+     "model_type": "note",
+     "note": {
+      "has_music": false,
+      "geo_info": {
+       "distance": ""
+      },
+      "liked": false,
+      "click_score": 0.050046198070049286,
+      "title": "圆脸~超清透氧气感韩系水光肌淡妆教程",
+      "result_from": "",
+      "collected_count": 258,
+      "comments_count": 25,
+      "nice_count": 0,
+      "collected": false,
+      "niced": false,
+      "images_list": [
+       {
+        "fileid": "notes_pre_post/1040g3k831trgc64amu0g5p0lbu74c29hmk6a8l0",
+        "height": 2796,
+        "trace_id": "notes_pre_post/1040g3k831trgc64amu0g5p0lbu74c29hmk6a8l0",
+        "width": 2097,
+        "original": "",
+        "url_size_large": "https://sns-na-i11.xhscdn.com/notes_pre_post/1040g3k831trgc64amu0g5p0lbu74c29hmk6a8l0?imageView2/2/w/1440/format/webp&ap=5&sc=SRH_DTL&sign=FAKESIGN&t=FAKE",
+        "need_load_original_image": false,
+        "url": "https://sns-na-i11.xhscdn.com/notes_pre_post/1040g3k831trgc64amu0g5p0lbu74c29hmk6a8l0?imageView2/2/w/576/format/webp/q/87%7CimageMogr2/strip&redImage/frame/0&ap=5&sc=SRH_PRV&sign=FAKESIGN&t=FAKE"
+       }
+      ],
+      "type": "normal",
+      "id": "69ba4402000000002102c447",
+      "user": {
+       "red_id": "yll27_y01",
+       "images": "https://sns-avatar-qc.xhscdn.com/avatar/642c1ba1a61cee6d85accee5.jpg?imageView2/2/w/80/format/jpg",
+       "red_official_verified": false,
+       "userid": "64155f8e0000000011020931",
+       "followed": false,
+       "track_duration": 0,
+       "nickname": "不另外加糖.",
+       "red_official_verify_type": 0,
+       "show_red_official_verify_icon": false
+      },
+      "timestamp": 1774265218,
+      "extract_text_enabled": 0,
+      "update_time": 1774265218000,
+      "xsec_token": "TEST_TOKEN",
+      "desc": "韩妆的精髓在于干净的底妆！ 用气垫上妆从面中往外均匀拍开～ 花知晓邦尼花园气垫粉霜N02，精华粉霜的质地，粉质超细腻，上",
+      "liked_count": 1181,
+      "shared_count": 15,
+      "last_update_time": 0
+     }
+    },
+    {
+     "mix_track_id": "NOTE__6a140c18000000003601d423__433cbfa831a34695@88a34e8d26634c06__韩系氧气妆 教程",
+     "new_help_style": false,
+     "model_type": "note",
+     "note": {
+      "last_update_time": 0,
+      "geo_info": {
+       "distance": ""
+      },
+      "liked": false,
+      "title": "圆脸~淡颜夏日空气感简妆教程",
+      "click_score": 0.058939751237630844,
+      "result_from": "",
+      "collected_count": 261,
+      "comments_count": 5,
+      "collected": false,
+      "nice_count": 0,
+      "niced": false,
+      "type": "normal",
+      "images_list": [
+       {
+        "fileid": "notes_pre_post/1040g3k0320j8jpgu5m005p0lbu74c29hkiebg98",
+        "height": 2232,
+        "url": "https://sns-na-i11.xhscdn.com/notes_pre_post/1040g3k0320j8jpgu5m005p0lbu74c29hkiebg98?imageView2/2/w/576/format/webp/q/87%7CimageMogr2/strip&redImage/frame/0&ap=5&sc=SRH_PRV&sign=FAKESIGN&t=FAKE",
+        "width": 1674,
+        "original": "",
+        "url_size_large": "https://sns-na-i11.xhscdn.com/notes_pre_post/1040g3k0320j8jpgu5m005p0lbu74c29hkiebg98?imageView2/2/w/1440/format/webp&ap=5&sc=SRH_DTL&sign=FAKESIGN&t=FAKE",
+        "trace_id": "notes_pre_post/1040g3k0320j8jpgu5m005p0lbu74c29hkiebg98",
+        "need_load_original_image": false
+       }
+      ],
+      "id": "6a140c18000000003601d423",
+      "user": {
+       "red_official_verified": false,
+       "userid": "64155f8e0000000011020931",
+       "track_duration": 0,
+       "red_official_verify_type": 0,
+       "followed": false,
+       "red_id": "yll27_y01",
+       "nickname": "不另外加糖.",
+       "images": "https://sns-avatar-qc.xhscdn.com/avatar/642c1ba1a61cee6d85accee5.jpg?imageView2/2/w/80/format/jpg",
+       "show_red_official_verify_icon": false
+      },
+      "timestamp": 1780053530,
+      "extract_text_enabled": 0,
+      "xsec_token": "TEST_TOKEN",
+      "update_time": 1780053530000,
+      "liked_count": 562,
+      "desc": "好适合淡颜的色号~intoyou空气唇泥三代的这支#W10裸浮杏 ，真的吼吼看～ 和崔秀彬一样温柔的定制色一点不挑皮，黄",
+      "shared_count": 17,
+      "has_music": false
+     }
+    }
+   ]
+  }
+ }
+}

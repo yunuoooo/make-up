@@ -211,6 +211,7 @@ export function summarizeToolCall(toolName: string, args: any): string {
 const REFUSAL_LABELS: Record<string, string> = {
   "not-configured": "数据源未配置",
   "empty-result": "没有结果",
+  "collection-failed": "上游没采集到内容",
   "budget-exhausted": "已到本轮取数上限",
   "unknown-note": "笔记不在本轮搜索结果里",
   "quota-exhausted": "上游配额用尽",
