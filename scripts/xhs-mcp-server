@@ -10,13 +10,33 @@ HEADLESS=${XHS_MCP_HEADLESS:-true}
 PLATFORM=$(xhs_platform)
 BINARY=${XHS_MCP_BINARY:-"$ROOT_DIR/xiaohongshu-mcp/bin/xiaohongshu-mcp-$PLATFORM"}
 
+LOG_DIR=${XHS_LOG_DIR:-"$DATA_DIR/logs"}
+LOG_FILE=${XHS_LOG_FILE:-"$LOG_DIR/xhs-mcp.log"}
+LOG_MAX_BYTES=${XHS_LOG_MAX_BYTES:-5242880}
+
 xhs_require_binary "$BINARY" "xiaohongshu-mcp" "XHS_MCP_BINARY"
 
-mkdir -p "$DATA_DIR"
+mkdir -p "$DATA_DIR" "$LOG_DIR"
 export COOKIES_PATH=${COOKIES_PATH:-"$DATA_DIR/cookies.json"}
 
 if [ -n "${XHS_MCP_AUTH_TOKEN:-}" ]; then
   export AUTH_TOKEN="$XHS_MCP_AUTH_TOKEN"
 fi
 
-exec "$BINARY" -headless="$HEADLESS" -port ":$PORT"
+# 常驻服务会连续跑几周，日志不能无上限长：超限就把上一份挪成 .1，只留一代。
+if [ -f "$LOG_FILE" ]; then
+  size=$(wc -c <"$LOG_FILE" | tr -d ' ')
+  if [ "${size:-0}" -gt "$LOG_MAX_BYTES" ]; then
+    mv -f "$LOG_FILE" "$LOG_FILE.1"
+  fi
+fi
+
+# 上游会把 xsec_token 打进详情 URL，还可能带上 Cookie / Authorization；
+# 落盘前必须脱敏，与 `npm run xhs:mcp` 的出口纪律一致（09-07 第 8 节）。
+REDACT='BEGIN { $|=1 }
+  s/([?&]xsec_token=)[^&[:space:]"]+/${1}[redacted]/gi;
+  s/((?:xsec_token|xsectoken|access_token|cookie|authorization|auth_token)\s*[:=]\s*)[^\s,;"}]+/${1}[redacted]/gi;
+  s/(Bearer\s+)[^\s"]+/${1}[redacted]/gi'
+
+# 不走 exec：要过一层脱敏管道，再把同一份写进终端和日志文件。
+"$BINARY" -headless="$HEADLESS" -port ":$PORT" 2>&1 | perl -pe "$REDACT" | tee -a "$LOG_FILE"

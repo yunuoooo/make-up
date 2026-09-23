@@ -48,5 +48,9 @@ buildPiArgs --skill <skillDir>
 
 - 运行时仍然只读：白名单外的工具在 Pi 侧不可见，技能里提到的发布、点赞、收藏不会被误触发。
 - 技能内容变更不需要改 bridge；新增技能用 `PI_SKILL_PATH` 或扩展 `skillPath` 选项接入。
+- **上游缺陷的规避不写在技能里**：技能是行为引导，模型可以忽略；把「上游有缺陷所以别这么调」写进技能，等于把外部服务的 bug 变成了产品行为，而且模型仍可能试探一次、白烧一个超时窗口。
+  - 归属原则：**约束跟着有缺陷的那个工具走**。工具适配层（`.pi/extensions/`）能在发出请求之前就挡掉，模型绕不过去，代价为零。
+  - 例子见 [09-07 第 12 节](./09-07-xhs-mcp-integration.md)：视频笔记在 `xhs_get_feed_detail` 里被拦掉，技能文件保持原样。
+  - 技能只写业务行为：读几篇、输出格式、证据规则、只读边界——由产品决定，改动走正常评审。
 - `PI_CODING_AGENT_DIR` 指向项目内的 `.local-data/pi`，技能通过显式路径加载，不依赖全局技能目录或 `~/.pi`。
 - pi 本身是 `package.json` 的依赖（`@earendil-works/pi-coding-agent`），bridge 默认执行 `node_modules/.bin/pi`；`.pi/extensions/` 里用到的 `typebox` 同样是项目依赖，部署物不依赖任何全局安装。可用 `PI_BIN` 覆盖。
