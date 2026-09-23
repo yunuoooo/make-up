@@ -180,6 +180,7 @@ HTTP 层另有 `400 / 401 / 403 / 429 / 500 / 503`，与上面的业务码并存
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
+| `TAOBAO_CARDS_ENABLED` | `false` | 消费方侧的总开关，**默认关**：上游按次计费，打开才发请求（见消费方 spec） |
 | `TAOBAO_API_BASE_URL` | `https://api.justoneapi.com` | 换供应商或指向沙箱时才改 |
 | `TAOBAO_API_TOKEN` | 空 | 为空即视为「未配置」：**不发任何请求**，功能整体降级（见消费方 spec） |
 | `TAOBAO_API_TIMEOUT_SECONDS` | `30` | 单请求超时 |

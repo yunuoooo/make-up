@@ -44,7 +44,8 @@ async function attachProductCards(
 
   const observer = createCardsObserver(trace, items.length);
   const client = createTaobaoClient({ onCall: (info) => observer.onCall(info) });
-  // 未配置 token 时不发任何请求，连 pending 都不发：不显示假价格、假链接，也不留空骨架。
+  // 总开关（TAOBAO_CARDS_ENABLED，默认关）没开、或没配 token 时都不发任何请求，
+  // 连 pending 都不发：不显示假价格、假链接，也不留空骨架。
   if (!client.configured) return null;
 
   send({

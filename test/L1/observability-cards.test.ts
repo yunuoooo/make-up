@@ -78,7 +78,8 @@ const missing: ProductRef = { category: "口红", brand: "断货", name: "不存
 const env = {
   TAOBAO_API_BASE_URL: "https://api.justoneapi.com",
   TAOBAO_API_TOKEN: "test-token-1234",
-  TAOBAO_API_TIMEOUT_SECONDS: "5"
+  TAOBAO_API_TIMEOUT_SECONDS: "5",
+  TAOBAO_CARDS_ENABLED: "true"
 };
 
 function stubFetch(search: unknown, detail: unknown) {

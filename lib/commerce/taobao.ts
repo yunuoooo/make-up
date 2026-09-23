@@ -39,7 +39,26 @@ export class TaobaoApiError extends Error {
   }
 }
 
+/**
+ * 商品卡片总开关，默认**关**。
+ *
+ * 淘宝是采集类接口，按次计费，一轮妆容要打好几次搜索和详情。调试、演示，
+ * 或者只是不想烧钱的时候，在 `.env` 里把 `TAOBAO_CARDS_ENABLED` 关掉即可——
+ * 代码、技能、token 都不用动。
+ *
+ * 判据从严：只有 `"true"` / `"1"` 算开，没写、写空、写错都按关处理。这个方向的
+ * 默认值只会少花钱，不会让人意外被扣费。
+ */
+export function productCardsEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const value = (env.TAOBAO_CARDS_ENABLED ?? "").trim().toLowerCase();
+  return value === "true" || value === "1";
+}
+
 export type TaobaoClient = {
+  /**
+   * 可以发请求：**总开关打开，且配了 token**。任一不满足都不发请求，
+   * 调用方据此让整条卡片链路安静降级（连 `pending` 都不发）。
+   */
   configured: boolean;
   searchItems(
     keyword: string,
@@ -128,7 +147,8 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
   const token = (env.TAOBAO_API_TOKEN ?? "").trim();
   const timeoutSeconds = Number(env.TAOBAO_API_TIMEOUT_SECONDS ?? 30);
   const timeoutMs = Math.max(1, Number.isFinite(timeoutSeconds) ? timeoutSeconds : 30) * 1000;
-  const configured = Boolean(token);
+  // 开关与 token 是「与」的关系：开关默认关，所以配了 token 也不会自动开始烧钱。
+  const configured = productCardsEnabled(env) && Boolean(token);
 
   /** 观测是纯旁路：回调抛错只丢一条观测，不能让淘宝调用失败。 */
   function report(info: TaobaoCallInfo): void {
@@ -145,7 +165,7 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
     signal: AbortSignal | undefined,
     descriptor: Pick<TaobaoCallInfo, "endpoint" | "keyword" | "itemId" | "tag">
   ): Promise<Record<string, unknown>> {
-    if (!configured) throw new TaobaoApiError("淘宝 API 未配置 TAOBAO_API_TOKEN", { code: -1, retryable: false });
+    if (!configured) throw new TaobaoApiError("淘宝商品卡片未启用（TAOBAO_CARDS_ENABLED）或未配置 token", { code: -1, retryable: false });
 
     const url = new URL(`${baseUrl}${path}`);
     url.searchParams.set("token", token);
@@ -193,7 +213,7 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
     configured,
 
     async searchItems(keyword, searchOptions = {}) {
-      // 未配置凭据时整条链路安静降级：不发请求，也不把「未配置」当成错误抛给上层。
+      // 开关关着或没配凭据时整条链路安静降级：不发请求，也不把「没开」当成错误抛给上层。
       if (!configured) return [];
       const data = await call(
         SEARCH_PATH,

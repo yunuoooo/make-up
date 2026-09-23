@@ -8,7 +8,7 @@ import {
   pickSearchItem,
   type ProductCardRun
 } from "../../lib/commerce/cards.ts";
-import { TaobaoApiError, createTaobaoClient, type TaobaoCallInfo } from "../../lib/commerce/taobao.ts";
+import { TaobaoApiError, createTaobaoClient, productCardsEnabled, type TaobaoCallInfo } from "../../lib/commerce/taobao.ts";
 import { productKey } from "../../lib/commerce/product-block.ts";
 import type { ProductCard, ProductRef, TaobaoSearchItem } from "../../lib/commerce/types.ts";
 
@@ -38,7 +38,9 @@ function stubFetch(handlers: { search?: (url: URL) => Reply; detail?: (url: URL)
 const env = {
   TAOBAO_API_BASE_URL: "https://api.justoneapi.com",
   TAOBAO_API_TOKEN: "test-token-1234",
-  TAOBAO_API_TIMEOUT_SECONDS: "5"
+  TAOBAO_API_TIMEOUT_SECONDS: "5",
+  // 总开关默认关，所以这里必须显式打开——这条也是「默认不发请求」的回归点。
+  TAOBAO_CARDS_ENABLED: "true"
 };
 
 let cachedFixtures: { search: any; detail: any } | null = null;
@@ -144,6 +146,26 @@ test("未配置 token 时零请求", async () => {
   assert.deepEqual(await client.searchItems("x"), []);
   assert.equal(await client.getItemDetail("1"), null);
   assert.equal(calls.length, 0);
+});
+
+test("总开关：默认关，只有 true/1 算开", () => {
+  // 没写、写空、写错都按关处理——这个方向的默认值只会少花钱。
+  assert.equal(productCardsEnabled({}), false);
+  assert.equal(productCardsEnabled({ TAOBAO_CARDS_ENABLED: "" }), false);
+  assert.equal(productCardsEnabled({ TAOBAO_CARDS_ENABLED: "false" }), false);
+  assert.equal(productCardsEnabled({ TAOBAO_CARDS_ENABLED: "TRUE " }), true);
+  assert.equal(productCardsEnabled({ TAOBAO_CARDS_ENABLED: "1" }), true);
+});
+
+test("总开关关着时，配了 token 也零请求", async () => {
+  const { fetchImpl, calls } = stubFetch({});
+  // token 是齐的，只有开关关着——这是「一键关掉」最典型的用法。
+  const client = createTaobaoClient({ fetchImpl, env: { ...env, TAOBAO_CARDS_ENABLED: "false" } });
+
+  assert.equal(client.configured, false);
+  assert.deepEqual(await client.searchItems("橘朵腮红"), []);
+  assert.equal(await client.getItemDetail(DETAIL_ITEM_ID), null);
+  assert.equal(calls.length, 0, "关掉开关就不该发出任何请求");
 });
 
 test("补全：搜索选中非广告位商品，详情配图与链接进卡片", async () => {

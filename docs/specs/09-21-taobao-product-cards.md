@@ -140,7 +140,7 @@ export function createTaobaoClient(options?: {
 - 上游信封是 `{code, message, data, requestId}`：`code !== 0` 时抛 `TaobaoApiError`（带 `code` 和 `requestId`），由编排层按 SSOT 第 3 节的表决定重试、放弃还是整批停止。**HTTP 状态不参与判断**。
 - 映射时只读 SSOT 第 4/6 节列出的白名单字段：搜索的 320 KB 页内状态、详情的 `desc` HTML、`url_log`／`_ddf` 等诊断字段一律不进入返回值。
 - 供应商差异（换 base URL、换接口版本、字段改名）只允许出现在 `lib/commerce/taobao.ts` 一处；上层模块不感知供应商。
-- `configured` 为 false（缺 `TAOBAO_API_TOKEN`）时**不发任何请求**，`searchItems` 返回空数组、`getItemDetail` 返回 null。
+- `configured` 为 false 时**不发任何请求**，`searchItems` 返回空数组、`getItemDetail` 返回 null。它是「总开关打开 **且** 配了 `TAOBAO_API_TOKEN`」，两者是与的关系——配了 token 也不会自动开始计费。
 - 日志只写 `path` + 业务码 + `requestId`：token 在 query string 里，完整 URL 不能落日志。
 
 ### 6.3 SSE 事件 `product_cards`
@@ -238,6 +238,7 @@ export type ProductCardsState = {
 | 情况 | 行为 |
 | --- | --- |
 | 技能没输出块，或块不合法 | 不发 `product_cards`；答案照常；服务端记一条原因（不含 token、不含上游 URL） |
+| 总开关 `TAOBAO_CARDS_ENABLED` 关着（默认） | 同下：不发任何请求，连 `pending` 都不发 |
 | 未配置 `TAOBAO_API_TOKEN` | 不发任何请求，连 `pending` 都不发；UI 不出现任何假价格、假链接 |
 | 搜索无结果 / 结果里没有可用条目 | 该商品不出卡，进 `failed` |
 | 详情失败、超时、`code` 非 0 | 回退搜索结果的主图与拼出的商品链接，`detailLevel: "search"` |
@@ -263,6 +264,7 @@ export type ProductCardsState = {
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
+| `TAOBAO_CARDS_ENABLED` | `false` | **总开关，默认关**。淘宝按次计费，打开（`"true"`/`"1"`）才发请求；判据从严，没写、写空、写错都按关处理 |
 | `TAOBAO_API_BASE_URL` | `https://api.justoneapi.com` | 换供应商或指向沙箱时才改 |
 | `TAOBAO_API_TOKEN` | 空 | 唯一凭据，走 query 参数；为空即视为未配置 |
 | `TAOBAO_API_TIMEOUT_SECONDS` | 30 | 单请求超时 |
