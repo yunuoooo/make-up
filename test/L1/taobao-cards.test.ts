@@ -55,7 +55,7 @@ async function fixtures() {
   if (!cachedFixtures) {
     cachedFixtures = {
       search: JSON.parse(await readFile("test/L1/fixtures/taobao-search-v2.json", "utf8")),
-      detail: JSON.parse(await readFile("test/L1/fixtures/taobao-detail-v8.json", "utf8"))
+      detail: JSON.parse(await readFile("test/L1/fixtures/taobao-detail-v6.json", "utf8"))
     };
   }
   return cachedFixtures;
@@ -64,11 +64,11 @@ async function fixtures() {
 /** 搜索 fixture 里第一条非广告位商品，也就是选品规则会选中的那条。 */
 const SEARCH_ITEM_ID = "1004620982324";
 /**
- * 详情 fixture 的商品 id。**与搜索 fixture 不是同一件商品**：详情那份取自 V8 的
- * 官方公开示例（赫莲娜小绿瓶），搜索那份是早先真调抓的橘朵腮红。两个端点各自回归
+ * 详情 fixture 的商品 id。**与搜索 fixture 不是同一件商品**：详情那份取自 V6 的
+ * 官方公开示例（川川也的 T 恤），搜索那份是早先真调抓的橘朵腮红。两个端点各自回归
  * 自己的形状；跨端点的配对断言（卡片链接、标题）因此都按 fixture 取值，不写死 id。
  */
-const DETAIL_ITEM_ID = "900719982898";
+const DETAIL_ITEM_ID = "801330948681";
 
 const ref: ProductRef = { category: "腮红", brand: "橘朵", name: "单色腮红", shade: "35", section: "necessary" };
 
@@ -123,48 +123,101 @@ test("详情映射：只回白名单字段，desc 与诊断字段不外泄", asy
   const detail = await createTaobaoClient({ fetchImpl, env }).getItemDetail(requested);
 
   assert.ok(detail);
-  // V8 的 num_iid 是数字、item_imgs 是字符串数组：这两条是换版本时最容易静默错的地方。
-  assert.equal(typeof detailBody.data.num_iid, "number", "V8 的 num_iid 回数字，映射层要转成字符串");
-  assert.ok(detailBody.data.item_imgs.every((entry: unknown) => typeof entry === "string"), "V8 的 item_imgs 是裸地址数组");
-  assert.equal(detail.numIid, DETAIL_ITEM_ID, "响应里的数字 num_iid 要盖过请求参数");
+  // V6 是嵌套结构、ID 在 item.itemId 里：这两条是换版本时最容易静默错的地方。
+  assert.ok(detailBody.data.item, "V6 的字段都挂在 item / seller 下");
+  assert.equal(typeof detailBody.data.item.itemId, "string", "V6 的 itemId 回字符串");
+  assert.ok(detailBody.data.item.images.every((entry: unknown) => typeof entry === "string"), "V6 的 images 是裸地址数组");
+  assert.equal(detail.numIid, DETAIL_ITEM_ID, "响应里的 ID 要盖过请求参数");
   assert.ok(detail.images.length >= 1);
   assert.ok(detail.images.every((url) => url.startsWith("https://")));
-  assert.equal(detail.detailUrl, `https://item.taobao.com/item.htm?id=${DETAIL_ITEM_ID}`);
+  assert.equal(detail.shop, detailBody.data.seller.shopName, "店铺名来自 seller.shopName");
+  // V6 不给 detail_url，值就该是空的——由消费方按 itemId 拼，别在这里编一个来源不明的链接。
+  assert.equal(detail.detailUrl, undefined);
+  assert.ok(!("detail_url" in detailBody.data), "V6 确实没有 detail_url，这条断言是给上游改版时报警的");
   assert.deepEqual(Object.keys(detail).sort(), ["detailUrl", "images", "numIid", "price", "shop", "title"]);
-  assert.ok(!("desc" in detail) && !("props" in detail) && !("message" in detail));
-  assert.ok(!("title_cn" in detail), "title_cn 只做兜底，不进内部类型");
+  assert.ok(!("desc" in detail) && !("props" in detail) && !("attribute" in detail));
+  assert.ok(!("detailImages" in detail), "详情长图不是卡片主图，不进内部类型");
 
-  assert.equal(new URL(calls[0]).pathname, "/api/taobao/get-item-detail/v8");
+  assert.equal(new URL(calls[0]).pathname, "/api/taobao/get-item-detail/v6");
   assert.equal(new URL(calls[0]).searchParams.get("itemId"), requested);
 });
 
-test("详情映射：V8 的字符串图组、pic_url 兜底、title_cn 兜底", async () => {
+test("详情映射：V6 的嵌套图组与券后价", async () => {
   const client = (body: unknown) => createTaobaoClient({ fetchImpl: stubFetch({ detail: () => ({ body }) }).fetchImpl, env });
 
-  // V8 的裸地址数组：item_imgs[0] 与 pic_url 故意不同，只认 {url} 形状的话
-  // images 会静默退化成 [pic_url]，这条就会挂——那正是换版本时最容易漏的错。
-  const v8Shape = await client({
+  // 主图取 item.images[]，不是 detailImages[]（详情长图）：取错字段卡片会挂一张长图，
+  // 而且是不报错的那种错。
+  const nested = await client({
     code: 0,
     data: {
-      num_iid: 9,
-      item_imgs: ["//img.alicdn.com/first.jpg", "//img.alicdn.com/second.jpg"],
-      pic_url: "//img.alicdn.com/pic.jpg"
+      item: {
+        itemId: "9",
+        title: "T",
+        price: "78",
+        couponPrice: "",
+        images: ["//img.alicdn.com/first.jpg", "//img.alicdn.com/second.jpg"],
+        detailImages: ["//img.alicdn.com/long.jpg"]
+      },
+      seller: { shopId: 1, shopName: "店" }
     }
   }).getItemDetail("9");
-  assert.deepEqual(v8Shape?.images, ["https://img.alicdn.com/first.jpg", "https://img.alicdn.com/second.jpg"]);
+  assert.deepEqual(nested?.images, ["https://img.alicdn.com/first.jpg", "https://img.alicdn.com/second.jpg"]);
+  assert.equal(nested?.numIid, "9");
+  assert.equal(nested?.title, "T");
+  assert.equal(nested?.price, "78");
+  assert.equal(nested?.shop, "店");
+  assert.equal(nested?.detailUrl, undefined, "V6 没有 detail_url，值就该是空的");
+
+  // 现价是空串时退券后价；券后价只有部分商品有，没有时同样是空串。
+  const coupon = await client({
+    code: 0,
+    data: { item: { itemId: "10", title: "T", images: ["//img.alicdn.com/a.jpg"], price: "", couponPrice: "68" } }
+  }).getItemDetail("10");
+  assert.equal(coupon?.price, "68");
+
+  // 两个都有时以现价为准：挂出来的价要和商品页对得上，不能拿券后价冒充现价。
+  const both = await client({
+    code: 0,
+    data: { item: { itemId: "11", title: "T", images: ["//img.alicdn.com/a.jpg"], price: "78", couponPrice: "68" } }
+  }).getItemDetail("11");
+  assert.equal(both?.price, "78");
+
+  // 什么都没取到就返回 null（按失败处理），而不是一张空卡片。V6 下 detailUrl 恒空，
+  // 这条判据实际落在标题与图上——正是最该守住的两样。
+  const empty = await client({ code: 0, data: { item: {}, seller: {} } }).getItemDetail("12");
+  assert.equal(empty, null);
+});
+
+test("详情映射：平铺形状（V8/V3）仍然收", async () => {
+  const client = (body: unknown) => createTaobaoClient({ fetchImpl: stubFetch({ detail: () => ({ body }) }).fetchImpl, env });
+
+  // 上游回退到平铺版本时，整套兜底链要一起生效——不然卡片会静默变成空标题 + 空图，
+  // 那是没有报错、只有详情全空的那种坏法。
+  const flat = await client({
+    code: 0,
+    data: {
+      num_iid: 42,
+      title: "",
+      title_cn: "中文标题",
+      item_imgs: ["//img.alicdn.com/first.jpg"],
+      pic_url: "//img.alicdn.com/pic.jpg",
+      nick: "店",
+      detail_url: "https://item.taobao.com/item.htm?id=42"
+    }
+  }).getItemDetail("42");
+  assert.equal(flat?.numIid, "42", "平铺的数字 ID 要转成字符串");
+  assert.equal(flat?.title, "中文标题", "title 为空时用 title_cn 兜底");
+  assert.deepEqual(flat?.images, ["https://img.alicdn.com/first.jpg"], "item_imgs[0] 是主图，退到 pic_url 就说明只认了一种形状");
+  assert.equal(flat?.shop, "店");
+  assert.equal(flat?.detailUrl, "https://item.taobao.com/item.htm?id=42");
 
   // 图组缺失才退到 pic_url。
-  const noImgs = await client({ code: 0, data: { num_iid: 42, title: "T", pic_url: "//img.alicdn.com/p.jpg", nick: "店" } }).getItemDetail("42");
-  assert.equal(noImgs?.numIid, "42", "数字 ID 转字符串");
+  const noImgs = await client({ code: 0, data: { num_iid: 43, title: "T", pic_url: "//img.alicdn.com/p.jpg", nick: "店" } }).getItemDetail("43");
   assert.deepEqual(noImgs?.images, ["https://img.alicdn.com/p.jpg"]);
 
   // V3 的 {url} 形状也仍然收：上游若回退版本，图不会一起没了。
   const v3Shape = await client({ code: 0, data: { num_iid: "7", item_imgs: [{ url: "//img.alicdn.com/o.jpg" }] } }).getItemDetail("7");
   assert.deepEqual(v3Shape?.images, ["https://img.alicdn.com/o.jpg"]);
-
-  // title 为空时用 title_cn 兜底：V8 两个字段都给，缺失的那个不该变成空标题。
-  const cnOnly = await client({ code: 0, data: { num_iid: 8, title: "", title_cn: "中文标题", detail_url: "https://item.taobao.com/item.htm?id=8" } }).getItemDetail("8");
-  assert.equal(cnOnly?.title, "中文标题");
 });
 
 test("业务码非 0 抛错，错误信息里不带 token", async () => {
@@ -234,12 +287,13 @@ test("补全：搜索选中非广告位商品，详情配图与链接进卡片",
   assert.equal(card.detailLevel, "detail");
   // 断言「详情赢了搜索回退」：这两条都取自详情 fixture，若映射没生效会落成
   // 搜索结果的 itemUrl(SEARCH_ITEM_ID) 与 uprightImg，这里就会挂。
-  assert.equal(card.purchaseUrl, detail.data.detail_url);
-  assert.equal(card.image, detail.data.item_imgs[0]);
+  // V6 没有 detail_url，所以这里验的是按**详情自己的** itemId 拼出来的链接。
+  assert.equal(card.purchaseUrl, itemUrl(DETAIL_ITEM_ID));
+  assert.equal(card.image, detail.data.item.images[0]);
   assert.notEqual(card.purchaseUrl, itemUrl(SEARCH_ITEM_ID));
   // 两个 fixture 是不同商品，标题就成了「详情赢了搜索」的判据：
-  // 映射没生效会落成搜索标题（橘朵），不是详情标题（赫莲娜）。
-  assert.equal(card.title, detail.data.title);
+  // 映射没生效会落成搜索标题（橘朵），不是详情标题（川川也）。
+  assert.equal(card.title, detail.data.item.title);
   assert.ok(card.price);
   assert.ok(!card.title.includes("<span"));
   assert.equal(calls.length, 2, "一件商品两次调用：搜索 + 详情");

@@ -179,7 +179,9 @@ function cardFromDetail(ref: ProductRef, picked: TaobaoSearchItem, detail: Taoba
     ...(image ? { image } : {}),
     ...(price ? { price } : {}),
     ...(shop ? { shop } : {}),
-    purchaseUrl: detail.detailUrl ?? itemUrl(picked.numIid),
+    // V6 没有 `detail_url`，这条兜底现在是常态而非例外：链接按**详情自己的** itemId 拼
+    // （上游若把请求重定向到别的商品，详情里的 ID 才是我们真正拿到数据的那一件）。
+    purchaseUrl: detail.detailUrl ?? itemUrl(detail.numIid),
     detailLevel: "detail"
   };
 }

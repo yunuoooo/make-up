@@ -11,11 +11,11 @@ import type { TaobaoItemDetail, TaobaoSearchItem } from "./types.ts";
 const DEFAULT_BASE_URL = "https://api.justoneapi.com";
 const SEARCH_PATH = "/api/taobao/search-item-list/v2";
 /**
- * 详情用 V8 而不是 V3：V8 单价 ¥0.2、V3 ¥0.6（同一账户、同为 code=0 才计费），
- * 一轮 8 张卡就是 ¥3.2 的差价。字段形状差异见 SSOT 第 4.2/4.3 节——V8 的
- * `item_imgs` 是字符串数组、`num_iid` 是数字，映射层按这两种形状都收。
+ * 详情用 V6：供应商标记的推荐版本，且多给运费（`delivery`）与券后价（`item.couponPrice`），
+ * 这两样 V8 都没有。代价是结构从平铺变成嵌套，而且**没有 `detail_url`**——链接改由
+ * `itemId` 拼（`cards.ts` 的 `itemUrl()`）。形状差异见 SSOT 第 4.2/4.3 节。
  */
-const DETAIL_PATH = "/api/taobao/get-item-detail/v8";
+const DETAIL_PATH = "/api/taobao/get-item-detail/v6";
 
 /** 每日配额、余额、TOKEN 上限：等多久都是同一个错，必须整批停下。 */
 export const QUOTA_ERROR_CODES = new Set([303, 601, 602]);
@@ -150,15 +150,20 @@ function optionalText(value: unknown): string | undefined {
 }
 
 /**
- * 图组条目：V8 给裸地址字符串，V3 给 `{url}`。两种形状都收——只认一种的话，
- * 上游换形状不会报错，只会静默退化成「item_imgs 全空、只剩 pic_url 一张图」。
+ * 图组条目：V6/V8 给裸地址字符串，V3 给 `{url}`。两种形状都收——只认一种的话，
+ * 上游换形状不会报错，只会静默退化成「图组全空、只剩 pic_url 一张图」。
  */
 function imageEntryUrl(raw: unknown): string | undefined {
   if (typeof raw === "string") return normalizeUrl(raw);
   return normalizeUrl((raw as { url?: unknown } | null)?.url);
 }
 
-/** 商品 ID：V8 回数字、V3 回字符串，统一成字符串；缺失时用请求里的 itemId。 */
+/** 嵌套块（V6 的 `item` / `seller`）：缺失或不是对象时给空对象，让平铺兜底链继续走。 */
+function asObject(value: unknown): Record<string, any> {
+  return value && typeof value === "object" ? (value as Record<string, any>) : {};
+}
+
+/** 商品 ID：V6 回字符串、V8 回数字，统一成字符串；缺失时用请求里的 itemId。 */
 function itemIdOf(value: unknown, fallback: string): string {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -283,12 +288,21 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
         itemId: String(itemId),
         ...(detailOptions.tag ? { tag: detailOptions.tag } : {})
       });
+
+      // V6 是嵌套结构（`item` / `seller`），V8、V3 是平铺。**嵌套优先、平铺兜底**：
+      // 只认一种形状的话，上游回退版本不会报错，只会让卡片静默退化成「空标题 + 空图」。
+      const item = asObject(data.item);
+      const seller = asObject(data.seller);
+
       const images: string[] = [];
-      if (Array.isArray(data.item_imgs)) {
-        for (const raw of data.item_imgs as unknown[]) {
-          const url = imageEntryUrl(raw);
-          if (url) images.push(url);
-        }
+      const rawImages = Array.isArray(item.images)
+        ? (item.images as unknown[])
+        : Array.isArray(data.item_imgs)
+          ? (data.item_imgs as unknown[])
+          : [];
+      for (const raw of rawImages) {
+        const url = imageEntryUrl(raw);
+        if (url) images.push(url);
       }
       if (!images.length) {
         const fallback = normalizeUrl(data.pic_url);
@@ -296,15 +310,18 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
       }
 
       const detail: TaobaoItemDetail = {
-        numIid: itemIdOf(data.num_iid, String(itemId)),
-        // V8 同时给 title 与 title_cn；title 为空时用中文标题兜底。
-        title: cleanText(data.title) || cleanText(data.title_cn),
+        numIid: itemIdOf(item.itemId ?? data.num_iid, String(itemId)),
+        // V6 只有 title；title_cn 是 V8 的兜底字段，留着只为接住平铺形状。
+        title: cleanText(item.title) || cleanText(data.title) || cleanText(data.title_cn),
         images,
-        price: typeof data.price === "string" && data.price.trim() ? data.price.trim() : undefined,
+        // 券后价只在现价缺失时才顶上——挂出来的价得和商品页对得上，不能拿券后价冒充现价。
+        price: optionalText(item.price) ?? optionalText(item.couponPrice) ?? optionalText(data.price),
+        // V6 没有 detail_url：值就是空的，由消费方按 itemId 拼规范详情页（消费方 spec 第 7 节）。
         detailUrl: normalizeUrl(data.detail_url),
-        shop: optionalText(data.nick)
+        shop: optionalText(seller.shopName) ?? optionalText(data.nick)
       };
       // 三样都没有说明这条详情没取到东西，按失败处理，而不是当作一张空卡片。
+      // V6 下 detailUrl 恒空，这条判据实际落在标题与图上——正是最该守住的两样。
       if (!detail.title && !detail.images.length && !detail.detailUrl) return null;
       return detail;
     }
