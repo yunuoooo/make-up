@@ -38,7 +38,7 @@ Happy Path 已经能给出「必要／非必要」两张选品拆解表，但表
 
 | 决策点 | 选择 | 理由 |
 | --- | --- | --- |
-| 淘宝接口形态 | 第三方聚合中转 **Just One API**：商品搜索 V2 + 商品详情 V3，`token` 查询参数鉴权 | 不需要淘宝开放平台的企业资质和淘宝客备案；字段与错误码见 [09-21-justoneapi-taobao-ssot.md](./09-21-justoneapi-taobao-ssot.md)（下称 SSOT） |
+| 淘宝接口形态 | 第三方聚合中转 **Just One API**：商品搜索 V2 + 商品详情 **V8**，`token` 查询参数鉴权 | 不需要淘宝开放平台的企业资质和淘宝客备案；字段与错误码见 [09-21-justoneapi-taobao-ssot.md](./09-21-justoneapi-taobao-ssot.md)（下称 SSOT）。详情从 V3 换 V8 只因为单价 ¥0.6 → ¥0.2（SSOT 第 4.3 / 8.2 节） |
 | 卡片覆盖范围 | 只放 `💰` **首选**（含「必要」与「非必要」两张表的首选，每品类最多一件） | `✅` 已有单品不需要购买链接；备选只留在表格里 |
 | 清单来源 | 技能在答案末尾输出机器可读块，服务端严格校验后使用 | 不改表格正文、不增加模型轮次、可校验可降级；比抠 Markdown 表格可靠 |
 | 补全执行方 | 服务端（Next.js 进程），不是 pi 工具 | 选品已定，补全是机械动作；不进模型上下文＝不会被改写成假链接 |
@@ -57,7 +57,7 @@ emit result（正文已不含块）
         ↓
 lib/commerce/cards.ts：逐件补全（并发 2 + 单件失败隔离 + 24h 缓存）
         ↓
-lib/commerce/taobao.ts：搜索 V2 定位 item_id → 详情 V3 取主图与 detail_url（格式见 SSOT）
+lib/commerce/taobao.ts：搜索 V2 定位 item_id → 详情 V8 取主图与 detail_url（格式见 SSOT）
         ↓
 emit product_cards（渐进：pending → 逐张 → done）
         ↓
@@ -135,8 +135,9 @@ export function createTaobaoClient(options?: {
 };
 ```
 
-- 两个方法对应 SSOT 的 `GET /api/taobao/search-item-list/v2`（搜索）与 `GET /api/taobao/get-item-detail/v3`（详情），鉴权为 `token` 查询参数，`page` 固定传 `1`。
+- 两个方法对应 SSOT 的 `GET /api/taobao/search-item-list/v2`（搜索）与 `GET /api/taobao/get-item-detail/v8`（详情），鉴权为 `token` 查询参数，`page` 固定传 `1`。
 - 详情接口一次只接一个 `itemId`，**接口就是单品形状**，不做 `getItemDetails(ids)` 这种假批量。
+- 详情映射要同时收两种形状：V8 的 `item_imgs` 是裸地址字符串、`num_iid` 是数字（V3 分别是 `{url}` 与字符串）。只认一种不会报错，只会静默退化——见 SSOT 第 4.2 / 4.3 节。
 - 上游信封是 `{code, message, data, requestId}`：`code !== 0` 时抛 `TaobaoApiError`（带 `code` 和 `requestId`），由编排层按 SSOT 第 3 节的表决定重试、放弃还是整批停止。**HTTP 状态不参与判断**。
 - 映射时只读 SSOT 第 4/6 节列出的白名单字段：搜索的 320 KB 页内状态、详情的 `desc` HTML、`url_log`／`_ddf` 等诊断字段一律不进入返回值。
 - 供应商差异（换 base URL、换接口版本、字段改名）只允许出现在 `lib/commerce/taobao.ts` 一处；上层模块不感知供应商。
@@ -272,7 +273,7 @@ export type ProductCardsState = {
 | `TAOBAO_CARD_LIMIT` | 8 | 单轮卡片上限（也是块条目上限） |
 | `TAOBAO_CACHE_TTL_SECONDS` | 86400 | 卡片缓存 TTL |
 
-原方案里的 `TAOBAO_API_MODE=mock`（无凭据时用 fixture 看 UI）**没有实现**：写这份 spec 时 token 已经配好，真实链路可以直接跑，多一条假数据分支只会多一个上线前要拆的东西。需要它的时候再加。
+原方案里的 `TAOBAO_API_MODE=mock`（无凭据时用 fixture 看 UI）**没有实现**：写这份 spec 时 token 已经配好，真实链路可以直接跑，多一条假数据分支只会多一个上线前要拆的东西。需要它的时候再加。2026-09-24 查成本时把 `TAOBAO_API_MODE="mock"` 从 `.env` 里**删掉了**——一个不生效的开关摆在成本相关的配置里只会误导排查。
 
 `.env` 里遗留的 `TAOBAO_API_KEY` / `TAOBAO_API_SECRET`（旧的占位代码留下的空值）已删掉：本平台不用 key/secret，留着只会让人以为配了就生效。
 
@@ -303,6 +304,7 @@ export type ProductCardsState = {
 | --- | --- |
 | 搜索 V2 单次调用 | `code=0`，10.3s / 8.5s / 6.2s / 3.9s（同一关键词重复打也有差异） |
 | 详情 V3 单次调用 | `code=0`，3.4s |
+| 详情 **V8** 单次调用 | **未实测**：2026-09-24 换到 V8 时只用官方公开示例核了字段形状，没有用我们的 token 真调过。第一次真调要盯 SSOT 第 10 节第 1 条那几项 |
 | 搜索页 `uprightImg` | 抽样 4 条商品**全是 `null`**，图片实际都靠 `pic_path` 回退——回退分支是主路径而不是兜底 |
 | 广告位 | 46 条商品里 4 条 `isP4p=true`，其中一条正是首位结果 |
 | `code=301` | 关键词相关且偶发：`MAC 口红 Chili` 连续失败，`MAC 子弹头口红 Chili` 与 `魅可 子弹头口红 Chili` 正常返回 46/48 条；上游 message 就是 `COLLECT FAILED, SEND REQUEST AGAIN` |
@@ -314,6 +316,8 @@ export type ProductCardsState = {
 `buildProductCards` 跑通 2 张卡片、1 件因 `code=301` 失败，总耗时 40.9s，`status: "partial"`。卡片字段全部来自淘宝：图 `img.alicdn.com/…jpg`、价 `17.90`、店铺 `Bymi美妆集合店`、链接 `item.taobao.com/item.htm?id=1004620982324`、`detailLevel: "detail"`。
 
 **端到端（`next dev` + 真实 pi + 真实小红书 MCP + 真实 token）**
+
+> 下面这组数字是 **V3 时期**（2026-09-21）的记录，链路行为仍然有效，但「每件 2 次调用」现在的第二次已经是 V8。成本口径见 SSOT 第 8.2 节。
 
 请求 `{"message":"韩系氧气妆"}`，一轮 41 次工具调用、24 次模型调用、约 16 分钟：
 
@@ -336,7 +340,9 @@ export type ProductCardsState = {
 ## 14. 待确认
 
 1. **「非必要」表的 `💰` 首选是否进卡片**：当前方案是进（用 `section` 区分并打「按需」标）。若只想推核心清单，改成只收 `necessary` 即可。
-2. **详情接口用 V3 还是 V6**：当前按 V3——字段平铺、直接给 `detail_url`，映射成本最低。V6 是供应商标为推荐的版本，带券后价和运费，但是原始 H5 嵌套结构、没有 `detail_url`。要券后价就换 V6，改动只在映射层（SSOT 第 4.3 节）。
-3. **卡片上限 8、缓存 24h、整批预算 60s**：按你的配额与计费预期确认；每件商品 2 次调用，一轮 8 件 = 16 次（SSOT 第 8 节）。实测单件约 4–20s，预算会被长清单吃掉，商品多时靠渐进事件先给用户看。
-4. **`code=301` 的重试次数**：现在是「重试一次」（共 2 次尝试）。实测它偶发且上游自己建议重试，如果觉得卡片缺件比等待更糟，可以加第 3 次尝试——代价是预算内少补一件商品。
-5. 接口格式本身没确认的项（天猫商品在 V3 下的字段差异、搜索每页条数、QPS 上限）记在 SSOT 第 10 节，不在这里重复。
+2. **详情接口用哪个版本**：当前按 V8——单价 ¥0.2（V3 是 ¥0.6），字段平铺、直接给 `detail_url`，映射只多两处形状差异。V6 是供应商标为推荐的版本，带券后价和运费，但是原始 H5 嵌套结构、没有 `detail_url`。要券后价就换 V6，改动只在映射层（SSOT 第 4.3 节）。
+3. **一轮 ¥5.8 还要不要往下压**：这是换完 V8 之后的每轮成本（8 次搜索 + 8 次详情，SSOT 第 8.2 节），两个更大的杠杆都还没动——**不调详情**（搜索结果本身就够拼一张卡，代价是标题被截断、主图是竖版缩略图）和**降 `TAOBAO_CARD_LIMIT`**。两个都会改变用户看到的东西，所以留着等明确要做再动。
+4. **卡片上限 8、缓存 24h、整批预算 60s**：按你的配额与计费预期确认；每件商品 2 次调用，一轮 8 件 = 16 次（SSOT 第 8 节）。实测单件约 4–20s，预算会被长清单吃掉，商品多时靠渐进事件先给用户看。
+5. **`code=301` 的重试次数**：现在是「重试一次」（共 2 次尝试）。实测它偶发且上游自己建议重试，如果觉得卡片缺件比等待更糟，可以加第 3 次尝试——代价是预算内少补一件商品。顺带一提，**重试不产生费用**：失败的调用不计费（SSOT 第 8.1 节），所以这个取舍只看「等不等得起」，不看钱。
+6. **缓存穿透**：`productKey` 只做小写化与空白压缩，不归一化标点与全角半角。同一件商品被技能换一种写法描述就会重新计费。要不要加别名归一化，先看 SSOT 第 8.2 节的调用记录里有没有真的重复。
+7. 接口格式本身没确认的项（详情的 V8 真调、天猫商品在 V8 下的字段差异、搜索 V2 单价、搜索每页条数、QPS 上限）记在 SSOT 第 10 节，不在这里重复。

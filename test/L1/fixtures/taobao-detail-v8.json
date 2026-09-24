@@ -1,0 +1,99 @@
+{
+  "code": 0,
+  "message": null,
+  "recordTime": null,
+  "data": {
+    "num_iid": 900719982898,
+    "title_cn": "Helena Rubinstein/赫莲娜小绿瓶PRO 绿宝瓶精华30-50-75ml",
+    "title": "Helena Rubinstein/赫莲娜小绿瓶PRO 绿宝瓶精华30-50-75ml",
+    "orginal_price": "1542.00",
+    "price": "1542.00",
+    "goods_original_price": "1542.00",
+    "max_price": 2145,
+    "nick": "全球购官方买手店",
+    "detail_url": "https://item.taobao.com/item.htm?id=900719982898",
+    "pic_url": "https://img.alicdn.com/bao/uploaded/i4/4066234693/O1CN01PYyhJU1kXRcGYJPY2_!!4066234693.jpg",
+    "desc": "<div style=\"width: 750px\"><img src=\"https://img.alicdn.com/imgextra/placeholder.png\"></div>",
+    "item_imgs": [
+      "https://img.alicdn.com/bao/uploaded/i4/4066234693/O1CN01PYyhJU1kXRcGYJPY2_!!4066234693.jpg",
+      "https://img.alicdn.com/bao/uploaded/i3/4066234693/O1CN01PdV2UX1kXRcLBAO3C_!!4066234693.jpg",
+      "https://img.alicdn.com/bao/uploaded/i3/4066234693/O1CN01L7sBRw1kXRcQ38VeF_!!4066234693.jpg"
+    ],
+    "props": [
+      {
+        "name": "品牌",
+        "value": "Helena Rubinstein"
+      },
+      {
+        "name": "净含量",
+        "value": "30ML"
+      },
+      {
+        "name": "净含量",
+        "value": "50ML"
+      },
+      {
+        "name": "净含量",
+        "value": "75ML"
+      }
+    ],
+    "props_list": [
+      {
+        "id": "147956252",
+        "name": "净含量",
+        "children": [
+          {
+            "id": "75367145",
+            "name": "30ML"
+          },
+          {
+            "id": "75366304",
+            "name": "50ML"
+          },
+          {
+            "id": "75366245",
+            "name": "75ML"
+          }
+        ]
+      }
+    ],
+    "skus": {
+      "sku": [
+        {
+          "origin_price": "1542.00",
+          "price": "1542.00",
+          "sku_original_price": "1542.00",
+          "properties_cn": "147956252:75367145",
+          "properties_name_cn": "147956252:75367145:净含量:30ML",
+          "properties": "147956252:75367145",
+          "properties_name": "147956252:75367145:净含量:30ML",
+          "quantity": 101,
+          "sku_id": 5756343456259,
+          "total_price": 0
+        },
+        {
+          "origin_price": "1840.00",
+          "price": "1840.00",
+          "sku_original_price": "1840.00",
+          "properties_cn": "147956252:75366304",
+          "properties_name_cn": "147956252:75366304:净含量:50ML",
+          "properties": "147956252:75366304",
+          "properties_name": "147956252:75366304:净含量:50ML",
+          "quantity": 0,
+          "sku_id": 5756343456260,
+          "total_price": 0
+        }
+      ]
+    },
+    "platform": "taobao",
+    "sales": 0,
+    "shop_id": 387022927,
+    "comment_count": 0,
+    "message": {
+      "sales": null,
+      "amountOnSale": 101,
+      "tradeScore": null,
+      "repeatPurchasePercent": null
+    }
+  }
+}

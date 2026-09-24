@@ -10,7 +10,12 @@ import type { TaobaoItemDetail, TaobaoSearchItem } from "./types.ts";
 
 const DEFAULT_BASE_URL = "https://api.justoneapi.com";
 const SEARCH_PATH = "/api/taobao/search-item-list/v2";
-const DETAIL_PATH = "/api/taobao/get-item-detail/v3";
+/**
+ * 详情用 V8 而不是 V3：V8 单价 ¥0.2、V3 ¥0.6（同一账户、同为 code=0 才计费），
+ * 一轮 8 张卡就是 ¥3.2 的差价。字段形状差异见 SSOT 第 4.2/4.3 节——V8 的
+ * `item_imgs` 是字符串数组、`num_iid` 是数字，映射层按这两种形状都收。
+ */
+const DETAIL_PATH = "/api/taobao/get-item-detail/v8";
 
 /** 限流、配额、余额：重试只会继续烧配额，必须整批停下。 */
 export const QUOTA_ERROR_CODES = new Set([302, 303, 601, 602]);
@@ -131,6 +136,22 @@ function cleanText(value: unknown): string {
 function optionalText(value: unknown): string | undefined {
   const text = cleanText(value);
   return text || undefined;
+}
+
+/**
+ * 图组条目：V8 给裸地址字符串，V3 给 `{url}`。两种形状都收——只认一种的话，
+ * 上游换形状不会报错，只会静默退化成「item_imgs 全空、只剩 pic_url 一张图」。
+ */
+function imageEntryUrl(raw: unknown): string | undefined {
+  if (typeof raw === "string") return normalizeUrl(raw);
+  return normalizeUrl((raw as { url?: unknown } | null)?.url);
+}
+
+/** 商品 ID：V8 回数字、V3 回字符串，统一成字符串；缺失时用请求里的 itemId。 */
+function itemIdOf(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return fallback;
 }
 
 function errorLabel(error: unknown): string {
@@ -254,7 +275,7 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
       const images: string[] = [];
       if (Array.isArray(data.item_imgs)) {
         for (const raw of data.item_imgs as unknown[]) {
-          const url = normalizeUrl((raw as { url?: unknown } | null)?.url);
+          const url = imageEntryUrl(raw);
           if (url) images.push(url);
         }
       }
@@ -264,8 +285,9 @@ export function createTaobaoClient(options: TaobaoClientOptions = {}): TaobaoCli
       }
 
       const detail: TaobaoItemDetail = {
-        numIid: typeof data.num_iid === "string" && data.num_iid ? data.num_iid : String(itemId),
-        title: cleanText(data.title),
+        numIid: itemIdOf(data.num_iid, String(itemId)),
+        // V8 同时给 title 与 title_cn；title 为空时用中文标题兜底。
+        title: cleanText(data.title) || cleanText(data.title_cn),
         images,
         price: typeof data.price === "string" && data.price.trim() ? data.price.trim() : undefined,
         detailUrl: normalizeUrl(data.detail_url),
