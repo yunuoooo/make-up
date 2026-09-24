@@ -2,6 +2,13 @@ import type { ProductFormState } from "./types";
 
 export const CURRENT_USER_ID = "local-user";
 
+/**
+ * 化妆品库的开放开关。关闭期间侧边栏入口保留，进去只看到「暂未开放」占位，
+ * 标题栏也不再给「添加化妆品」的入口。要恢复录入和筛选，把这里改回 true 即可。
+ * 显式标 boolean 是有意的：字面量 false 会让 true 分支被判定为不可达。
+ */
+export const IS_LIBRARY_OPEN: boolean = false;
+
 /** 与技能 SKILL.md 的用词保持一致，顾问给出的品类能直接落进筛选项。 */
 export const CATEGORY_OPTIONS = [
   "底妆",

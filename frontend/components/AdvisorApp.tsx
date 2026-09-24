@@ -29,12 +29,13 @@ import {
 } from "@/frontend/components/ui/sidebar";
 import { Toaster } from "@/frontend/components/ui/sonner";
 import { ChatView } from "@/frontend/components/chat/ChatView";
+import { LibraryComingSoon } from "@/frontend/components/beauty-kit/LibraryComingSoon";
 import { LibraryView } from "@/frontend/components/beauty-kit/LibraryView";
 import { ProductDialog } from "@/frontend/components/beauty-kit/ProductDialog";
 import { useBeautyKit } from "@/frontend/hooks/useBeautyKit";
 import { useChat } from "@/frontend/hooks/useChat";
 import { useConversations } from "@/frontend/hooks/useConversations";
-import { CURRENT_USER_ID } from "@/frontend/lib/constants";
+import { CURRENT_USER_ID, IS_LIBRARY_OPEN } from "@/frontend/lib/constants";
 import { timeLabel } from "@/frontend/lib/formatters";
 import type { UserProduct } from "@/lib/types/domain";
 
@@ -50,6 +51,12 @@ export function AdvisorApp() {
   const conversations = useConversations(onError);
   const beautyKit = useBeautyKit({ userId: CURRENT_USER_ID, onError });
   const chat = useChat({ userId: CURRENT_USER_ID, onError, onPersist: conversations.save });
+
+  // 化妆品库关闭期间，标题栏只交代状态，不再提供「添加化妆品」的入口。
+  const libraryTitle = IS_LIBRARY_OPEN ? "我的化妆品库" : "我的化妆品";
+  const librarySummary = IS_LIBRARY_OPEN
+    ? `${beautyKit.products.length} 件已确认拥有的化妆品`
+    : "暂未开放";
 
   function startNewChat() {
     setView("chat");
@@ -142,9 +149,15 @@ export function AdvisorApp() {
                   >
                     <Library />
                     <span>我的化妆品</span>
-                    <span className="ml-auto rounded-full bg-[#ef7196]/20 px-2 py-0.5 text-[11px] text-[#ff9eba]">
-                      {beautyKit.products.length}
-                    </span>
+                    {IS_LIBRARY_OPEN ? (
+                      <span className="ml-auto rounded-full bg-[#ef7196]/20 px-2 py-0.5 text-[11px] text-[#ff9eba]">
+                        {beautyKit.products.length}
+                      </span>
+                    ) : (
+                      <span className="ml-auto rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-white/40">
+                        暂未开放
+                      </span>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
@@ -208,12 +221,10 @@ export function AdvisorApp() {
             <SidebarTrigger className="md:hidden" />
             <div>
               <p className="text-sm font-semibold text-[#282622]">
-                {view === "chat" ? "妆容拆解" : "我的化妆品库"}
+                {view === "chat" ? "妆容拆解" : libraryTitle}
               </p>
               <p className="text-[11px] text-[#8e8881]">
-                {view === "chat"
-                  ? "小红书研究 · 匹配妆品 · 生成路线"
-                  : `${beautyKit.products.length} 件已确认拥有的化妆品`}
+                {view === "chat" ? "小红书研究 · 匹配妆品 · 生成路线" : librarySummary}
               </p>
             </div>
           </div>
@@ -222,12 +233,12 @@ export function AdvisorApp() {
               <span className={chat.isSending ? "size-1.5 animate-pulse rounded-full bg-[#d8587e]" : "size-1.5 rounded-full bg-[#d8587e]"} />
               {chat.isSending ? chat.runtimePhase ?? "顾问工作中" : "顾问在线"}
             </div>
-          ) : (
+          ) : IS_LIBRARY_OPEN ? (
             <Button onClick={openCreateProduct} className="rounded-xl bg-[#242421] text-white hover:bg-[#393834]">
               <Plus />
               添加化妆品
             </Button>
-          )}
+          ) : null}
         </header>
 
         {view === "chat" ? (
@@ -241,7 +252,7 @@ export function AdvisorApp() {
             onDraftChange={chat.setMessage}
             onSubmit={chat.submitMessage}
           />
-        ) : (
+        ) : IS_LIBRARY_OPEN ? (
           <LibraryView
             products={beautyKit.filteredProducts}
             totalCount={beautyKit.products.length}
@@ -254,6 +265,8 @@ export function AdvisorApp() {
             onEdit={openEditProduct}
             onDelete={setProductToDelete}
           />
+        ) : (
+          <LibraryComingSoon />
         )}
       </SidebarInset>
 
