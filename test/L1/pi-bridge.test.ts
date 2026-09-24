@@ -29,7 +29,7 @@ function withEnv(name: string, value: string, run: () => void): void {
 
 const options: PiBridgeOptions = {
   prompt: "我想画韩系氧气妆",
-  extensionPath: "/tmp/xiaohongshu-mcp.ts",
+  extensionPath: "/tmp/xhs-source.ts",
   skillPath: "/tmp/xiaohongshu-makeup-advisor-latest",
   systemPrompt: "只做只读小红书研究。",
   provider: "deepseek",
@@ -45,7 +45,7 @@ test("builds an isolated Pi command for the read-only XHS runtime", () => {
     "--no-context-files",
     "--no-skills",
     "--no-builtin-tools",
-    "--extension", "/tmp/xiaohongshu-mcp.ts",
+    "--extension", "/tmp/xhs-source.ts",
     "--skill", "/tmp/xiaohongshu-makeup-advisor-latest",
     "--tools", "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail",
     "--system-prompt", "只做只读小红书研究。",

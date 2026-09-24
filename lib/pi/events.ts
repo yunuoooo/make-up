@@ -216,8 +216,6 @@ const REFUSAL_LABELS: Record<string, string> = {
   "unknown-note": "笔记不在本轮搜索结果里",
   "quota-exhausted": "上游配额用尽",
   "auth-failed": "上游凭据失效",
-  "video-note": "视频笔记已跳过",
-  "unreadable-note": "这篇读不出来，已跳过",
   "bad-argument": "参数不完整"
 };
 
@@ -232,23 +230,18 @@ export function summarizeToolResult(toolName: string, result: unknown, isError?:
   }
 
   if (toolName === "xhs_search_notes") {
-    // api 模式回 notes[]，mcp 回退链路仍然是上游的 feeds[]。
-    const notes = payload?.notes ?? payload?.feeds;
-    return Array.isArray(notes) ? `返回 ${notes.length} 条笔记` : size(text);
+    return Array.isArray(payload?.notes) ? `返回 ${payload.notes.length} 条笔记` : size(text);
   }
   if (toolName === "xhs_get_note_detail") {
-    const note = payload?.note ?? payload?.data?.note;
+    const note = payload?.note;
     const title = typeof note?.title === "string" ? note.title : "";
     return title ? `${title.slice(0, 24)}${title.length > 24 ? "…" : ""}` : size(text);
   }
   if (toolName === "xhs_source_status") {
-    if (payload?.mode === "api") {
-      const calls = payload.calls ?? {};
-      const limits = payload.limits ?? {};
-      return `api · search ${calls.search ?? 0}/${limits.searchPages ?? "?"} · detail ${calls.detail ?? 0}/${limits.detailLimit ?? "?"}`;
-    }
-    const message = typeof payload?.message === "string" ? payload.message : text;
-    return message.includes("已登录") ? message.split("\n")[0].slice(0, 40) : failureReason(message);
+    const calls = payload?.calls ?? {};
+    const limits = payload?.limits ?? {};
+    const label = payload?.mode === "api" ? "api" : "未启用";
+    return `${label} · search ${calls.search ?? 0}/${limits.searchPages ?? "?"} · detail ${calls.detail ?? 0}/${limits.detailLimit ?? "?"}`;
   }
   if (toolName === "read") {
     return size(text);
@@ -259,8 +252,8 @@ export function summarizeToolResult(toolName: string, result: unknown, isError?:
 function failureReason(text: string): string {
   if (/aborted due to timeout|timed out/i.test(text)) return "请求超时";
   if (/context deadline exceeded/i.test(text)) return "服务端超时";
-  if (/配额|余额|限额/.test(text)) return "上游配额用尽";
-  if (/凭据|权限不足/.test(text)) return "上游凭据失效";
+  if (/配额|余额|限额|额度|限流/.test(text)) return "上游配额用尽";
+  if (/凭据|权限不足|无权/.test(text)) return "上游凭据失效";
   if (/笔记不可访问|无法浏览/.test(text)) return "笔记不可访问";
   return text.replace(/\s+/g, " ").slice(0, 80) || "调用失败";
 }

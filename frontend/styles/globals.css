@@ -1,7 +1,7 @@
 @import "tailwindcss" source(none);
 @import "tw-animate-css";
 
-/* 显式声明扫描范围：仓库里的 xiaohongshu-mcp/ 是上游检出，自动扫描会拖慢构建。 */
+/* 显式声明扫描范围：只有界面代码需要参与扫描，仓库其余目录（测试、技能、规格文档）不扫。 */
 @source "../../app";
 @source "../";
 

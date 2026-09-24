@@ -4,37 +4,27 @@ import { readFile } from "node:fs/promises";
 import xhsSourceExtension from "../../.pi/extensions/xhs-source.ts";
 
 /**
- * 工具层的不变量。两条链路各测一遍：
+ * 工具层的不变量。取数只有一条链路（TikHub），所以这里只测这一条：
  *
- * - **api（正路）**：三道闸门都必须在**发出请求之前**拦住——未知 noteId、详情预算用尽、未配凭据；
- *   配额类错误要整批停止。技能是行为引导，模型可以忽略；工具层是硬拦，模型绕不过去。
- * - **mcp（迁移期回退）**：老行为不能变——视频笔记拦在本地不发请求、未知 feed_id 照旧放行、
- *   读不出来的笔记不重复撞超时。唯一的变化是 `xsec_token` 由扩展内部补，不再经模型上下文。
+ * - **三道闸门**都必须在**发出请求之前**拦住——未知 noteId、详情预算用尽、未配凭据。
+ *   技能是行为引导，模型可以忽略；工具层是硬拦，模型绕不过去。
+ * - **配额与采集侧失败**要整批停止或只停详情，别把已经计费的调用重试成两次。
  *
- * 全部用假的端点跑，不依赖真实的小红书服务或 TikHub。
+ * 迁移期的 mcp 回退分支（视频笔记拦截、未知 feed_id 放行、搜索里的 video 条目过滤）
+ * 随 Phase D 一起删除，对应的用例也一并删了——那条链路在仓库里已经不存在。
+ *
+ * 全部用假的端点跑，不依赖真实的 TikHub 服务。
  */
 
 type Reply = { status?: number; body: unknown };
 
-/** 同时兜住 MCP 的 JSON-RPC 与 TikHub 的 HTTP 两种上游。 */
-function stubFetch(handlers: {
-  mcp?: (method: string, params: any) => unknown;
-  http?: (url: URL) => Reply;
-}) {
+/** 兜住 TikHub 的 HTTP 上游；扩展的每一条出网路径都要从这里过。 */
+function stubFetch(handlers: { http?: (url: URL) => Reply }) {
   const calls: string[] = [];
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
     const url = new URL(raw);
-    if (url.pathname.endsWith("/health")) return new Response("ok", { status: 200 });
-
-    if (init?.method === "POST") {
-      const body = JSON.parse(String(init.body ?? "{}")) as { method: string; params?: any };
-      calls.push(body.method === "tools/call" ? `tools/call:${body.params?.name}` : body.method);
-      const result = handlers.mcp?.(body.method, body.params) ?? {};
-      return Response.json({ result });
-    }
-
     calls.push(`GET ${url.pathname}`);
     const reply = handlers.http?.(url) ?? { body: { code: 200, data: { code: 0, success: true, msg: "成功", data: [] } } };
     return new Response(JSON.stringify(reply.body), {
@@ -81,14 +71,6 @@ async function start(values: Record<string, string>) {
   await withEnv(values, async () => { await xhsSourceExtension(pi.api); });
   return pi.tools;
 }
-
-const mcpSearch = {
-  feeds: [
-    { id: "feed_normal_1", xsecToken: "tok-normal", noteCard: { type: "normal", displayTitle: "新手必学氧气妆！" } },
-    { id: "feed_video_1", xsecToken: "tok-video", noteCard: { type: "video", displayTitle: "7mins全妆跟练" } },
-    { id: "feed_normal_2", xsecToken: "tok-normal-2", noteCard: { type: "normal", displayTitle: "谁来懂今天的底妆" } }
-  ]
-};
 
 let cachedFixtures: { search: any; detail: any } | null = null;
 
@@ -142,11 +124,6 @@ const API_ENV = {
   XHS_API_SEARCH_PAGES: "2",
   XHS_API_DETAIL_LIMIT: "2",
   XHS_API_BUDGET_SECONDS: "60"
-};
-
-const MCP_ENV = {
-  XHS_SOURCE_MODE: "mcp",
-  XHS_MCP_URL: "http://127.0.0.1:18060/mcp"
 };
 
 test("api：搜索与详情走受控形状，正文只从详情来", async () => {
@@ -260,90 +237,6 @@ test("api：配额码出现即整批停止，后续调用不再发请求", async
   }
 });
 
-test("mcp：视频笔记拦在工具层且不发请求，xsec_token 由扩展内部补", async () => {
-  const calls: Array<{ name: string; args: any }> = [];
-  const stub = stubFetch({
-    mcp: (_method, params) => {
-      if (params?.name === "search_feeds") return { content: [{ type: "text", text: JSON.stringify(mcpSearch) }] };
-      calls.push({ name: params?.name, args: params?.arguments });
-      return { content: [{ type: "text", text: JSON.stringify({ data: { note: { title: "新手必学氧气妆！" } } }) }] };
-    }
-  });
-  try {
-    const tools = await start(MCP_ENV);
-    const search = tools.get("xhs_search_notes")!;
-    const detail = tools.get("xhs_get_note_detail")!;
-    // 工具描述里要写明本地约束，模型不用先撞一次才知道。
-    assert.match(String(detail.description), /normal/);
-    assert.match(String(detail.description), /视频/);
-
-    await search.execute("c1", { keyword: "韩系氧气妆" });
-    assert.ok(stub.calls.includes("tools/call:search_feeds"));
-
-    // 视频笔记：本地挡掉，返回可读说明，**不发上游请求**
-    const video = await detail.execute("c2", { noteId: "feed_video_1" });
-    assert.equal(calls.length, 0, "不该对视频笔记发出上游请求");
-    assert.equal(video.details.reason, "video-note");
-    assert.match(JSON.parse(video.content[0].text).message, /图文笔记/);
-
-    // 图文笔记：照常放行，且 xsec_token 由扩展从搜索结果里补，模型只传 noteId。
-    const normal = await detail.execute("c3", { noteId: "feed_normal_1" });
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].args.feed_id, "feed_normal_1");
-    assert.equal(calls[0].args.xsec_token, "tok-normal");
-    assert.match(normal.content[0].text, /新手必学氧气妆/);
-  } finally {
-    stub.restore();
-  }
-});
-
-test("mcp：未知 feed_id 照旧放行（回退链路不引入新行为）", async () => {
-  const calls: any[] = [];
-  const stub = stubFetch({
-    mcp: (_method, params) => {
-      calls.push(params?.arguments);
-      return { content: [{ type: "text", text: "{}" }] };
-    }
-  });
-  try {
-    const tools = await start(MCP_ENV);
-    await tools.get("xhs_get_note_detail")!.execute("c1", { noteId: "feed_unknown" });
-    assert.equal(calls.length, 1, "没有搜索记录的 id 在 mcp 模式仍然放行");
-    assert.equal(calls[0].xsec_token, "", "拿不到 token 就传空，让上游决定");
-  } finally {
-    stub.restore();
-  }
-});
-
-test("mcp：读超时的笔记会被记住，第二次不再撞同一个超时窗口", async () => {
-  const original = globalThis.fetch;
-  let detailCalls = 0;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
-    if (raw.endsWith("/health")) return new Response("ok", { status: 200 });
-    const body = JSON.parse(String(init?.body ?? "{}"));
-    if (body.params?.name === "search_feeds") {
-      return Response.json({ result: { content: [{ type: "text", text: JSON.stringify(mcpSearch) }] } });
-    }
-    detailCalls += 1;
-    throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
-  }) as typeof fetch;
-  try {
-    const tools = await start(MCP_ENV);
-    await tools.get("xhs_search_notes")!.execute("c1", { keyword: "韩系氧气妆" });
-
-    await assert.rejects(() => tools.get("xhs_get_note_detail")!.execute("c2", { noteId: "feed_normal_2" }), /超时/);
-    assert.equal(detailCalls, 1);
-
-    const second = await tools.get("xhs_get_note_detail")!.execute("c3", { noteId: "feed_normal_2" });
-    assert.equal(detailCalls, 1, "同一篇不再重试——重复读取只会重复消耗同一个超时窗口");
-    assert.equal(second.details.reason, "unreadable-note");
-    assert.match(JSON.parse(second.content[0].text).message, /其他笔记/);
-  } finally {
-    globalThis.fetch = original;
-  }
-});
-
 test("api：上游形状读不出内容时，报错要带上上游字段名", async () => {
   // 2026-09-24 的线上 badcase：详情响应里没有 id，整篇被静默丢掉，对外只有「没有结果」。
   const noteId = "6a9a3b6a000000001103860e";
@@ -394,45 +287,6 @@ test("api：连续两篇空 data 后不再打开新笔记，但搜索照常", as
     // 搜索本身是好的，不该被一起掐死。
     await tools.get("xhs_search_notes")!.execute("c5", { keyword: "换个关键词" });
     assert.ok(stub.calls.filter((call) => call.includes("search_notes")).length >= 2);
-  } finally {
-    stub.restore();
-  }
-});
-
-test("mcp：搜索返回里的视频条目被过滤掉，类型未知的条目保留", async () => {
-  const feeds = [
-    { id: "n1", noteCard: { type: "normal", displayTitle: "图文" } },
-    { id: "v1", noteCard: { type: "video", displayTitle: "视频" } },
-    { id: "u1", displayTitle: "类型未知" }
-  ];
-  const stub = stubFetch({
-    mcp: (_method, params) => params?.name === "search_feeds"
-      ? { content: [{ type: "text", text: JSON.stringify({ feeds, has_more: true }) }] }
-      : {}
-  });
-  try {
-    const tools = await start(MCP_ENV);
-    const result = await tools.get("xhs_search_notes")!.execute("c1", { keyword: "通勤妆" });
-    const payload = JSON.parse(result.content[0].text);
-    // 视频：丢掉。未知类型：留着——误丢未知类型的代价可能是整轮 0 条候选。
-    assert.deepEqual(payload.feeds.map((feed: any) => feed.id), ["n1", "u1"]);
-    assert.equal(payload.has_more, true, "过滤只动 feeds，其余字段原样保留");
-    assert.equal(result.details.videoNotesFiltered, 1, "丢了几条要能被观测到");
-  } finally {
-    stub.restore();
-  }
-});
-
-test("mcp：搜索返回解析不出类型时不影响调用", async () => {
-  const stub = stubFetch({
-    mcp: (_method, params) => params?.name === "search_feeds"
-      ? { content: [{ type: "text", text: "不是 JSON" }] }
-      : { content: [{ type: "text", text: "{}" }] }
-  });
-  try {
-    const tools = await start(MCP_ENV);
-    const result = await tools.get("xhs_search_notes")!.execute("c1", { keyword: "x" });
-    assert.match(result.content[0].text, /不是 JSON/, "原样透传，不能因为解析失败而报错");
   } finally {
     stub.restore();
   }

@@ -50,7 +50,7 @@ const problems = [];
 const warn = [];
 const mode = (process.env.XHS_SOURCE_MODE ?? "").trim();
 if (mode !== "api") {
-  problems.push(`XHS_SOURCE_MODE 期望 "api"，实际是 "${mode || "(空)"}"。mcp 回退路径需要 xiaohongshu-mcp 的二进制，本仓库只带 darwin-arm64，Linux 上用不了。`);
+  problems.push(`XHS_SOURCE_MODE 期望 "api"，实际是 "${mode || "(空)"}"。TikHub 是唯一的取数链路：其它值会让整条链路静默降级——不发请求，也不伪装成真实来源。`);
 }
 const token = (process.env.XHS_API_TOKEN ?? "").trim();
 if (!token) problems.push("XHS_API_TOKEN 为空：整条取数链路会静默降级，一次上游请求都不发。");
@@ -155,6 +155,6 @@ printf '\n✓ 部署完成（%s · %s）\n' "$(git rev-parse --short HEAD)" "$(g
 cat <<'NOTE'
   提醒（避免再被旧文档带偏）：
   - xhs 的供应商是 TikHub；Just One 只用于淘宝卡片
-  - 不要跑 npm run xhs:login / npm run xhs:mcp —— 那是 macOS 的 MCP 回退路径，Linux 上没有对应二进制
-  - 09-07 那份 MCP 接入 spec 已标 Superseded，别照着它操作
+  - 小红书取数不需要任何二进制或本地服务：没有浏览器、没有登录态、没有 npm run xhs:* 这类命令
+  - 09-07 那份 MCP 接入 spec 已标 Superseded，它写的那条链路已经删了，别照着它操作
 NOTE

@@ -7,8 +7,6 @@
     "test": "node --experimental-strip-types --test 'test/**/*.test.ts'",
     "test:l1": "node --experimental-strip-types --test 'test/L1/**/*.test.ts'",
     "test:l3": "RUN_L3_E2E=1 node --experimental-strip-types --test 'test/L3/**/*.test.ts'",
-    "xhs:login": "./scripts/xhs-mcp-login",
-    "xhs:mcp": "./scripts/xhs-mcp-server 2>&1 | perl -pe 'BEGIN { $|=1 } s/([?&]xsec_token=)[^&[:space:]\\\"]+/${1}[redacted]/gi'",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"

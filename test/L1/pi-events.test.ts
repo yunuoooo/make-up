@@ -24,7 +24,7 @@ const context: PiRunContext = {
   userPrompt: "我想画韩系氧气妆"
 };
 
-test("parses only JSONL events and redacts sensitive MCP tokens", () => {
+test("parses only JSONL events and redacts sensitive tokens", () => {
   assert.equal(parsePiJsonLine("Warning: startup"), null);
   assert.deepEqual(
     parsePiJsonLine('{"type":"tool_execution_end","result":{"text":"xsec_token=secret"}}'),
@@ -161,12 +161,6 @@ test("summarizes what the agent saw", () => {
     summarizeToolResult("xhs_get_note_detail", textResult(JSON.stringify({ note: { title: "韩系氧气妆教程" } }))),
     "韩系氧气妆教程"
   );
-  // mcp 回退链路仍是上游形状，两种都要认，否则切模式时过程区会退化成「2.0 KB」。
-  assert.equal(summarizeToolResult("xhs_search_notes", textResult(JSON.stringify({ feeds: [{}, {}, {}] }))), "返回 3 条笔记");
-  assert.equal(
-    summarizeToolResult("xhs_get_note_detail", textResult(JSON.stringify({ data: { note: { title: "韩系氧气妆教程" } } }))),
-    "韩系氧气妆教程"
-  );
   // 工具层的拒绝不是故障：要显示成人话，不是「调用失败」。
   assert.equal(
     summarizeToolResult("xhs_search_notes", textResult(JSON.stringify({ reason: "quota-exhausted", message: "配额或余额不足" }))),
@@ -185,11 +179,11 @@ test("summarizes what the agent saw", () => {
     "请求超时"
   );
   assert.equal(
-    summarizeToolResult("xhs_get_note_detail", textResult("小红书取数配额或余额不足（上游 code=303）"), true),
+    summarizeToolResult("xhs_get_note_detail", textResult("小红书取数被限流或套餐额度已用尽（HTTP 429）"), true),
     "上游配额用尽"
   );
   assert.equal(
-    summarizeToolResult("xhs_get_note_detail", textResult("工具 get_feed_detail 执行时发生内部错误: context deadline exceeded"), true),
+    summarizeToolResult("xhs_get_note_detail", textResult("小红书取数失败：请求超时 context deadline exceeded"), true),
     "服务端超时"
   );
 });

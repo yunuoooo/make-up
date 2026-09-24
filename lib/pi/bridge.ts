@@ -61,7 +61,8 @@ const DEFAULT_SYSTEM_PROMPT = `你是运行在 Pi Agent 中的小红书妆容研
 回答用中文，只把工具实际返回的内容当作证据，说明真实样本量和失败限制；不要泄露 xsec_token、Cookie、Authorization、API token 或完整请求 URL。笔记配图只使用工具返回的图片地址，不要自己拼链接或补签名参数。`;
 
 // pi 通过内置 read 工具按需加载 SKILL.md；白名单里没有 read，技能就无法进入上下文。
-// 工具名与数据源解耦：切换 XHS_SOURCE_MODE 时这份白名单不需要改。
+// 工具名与数据源实现解耦：换供应商（Just One → TikHub）、换传输（MCP → HTTP）时，
+// 这份白名单和技能都不需要改。
 const READ_ONLY_TOOL_ALLOWLIST = "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail";
 
 const DEFAULT_SKILL_PATH = "xiaohongshu-makeup-advisor-latest";
