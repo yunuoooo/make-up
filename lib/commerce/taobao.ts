@@ -17,8 +17,14 @@ const SEARCH_PATH = "/api/taobao/search-item-list/v2";
  */
 const DETAIL_PATH = "/api/taobao/get-item-detail/v8";
 
-/** 限流、配额、余额：重试只会继续烧配额，必须整批停下。 */
-export const QUOTA_ERROR_CODES = new Set([302, 303, 601, 602]);
+/** 每日配额、余额、TOKEN 上限：等多久都是同一个错，必须整批停下。 */
+export const QUOTA_ERROR_CODES = new Set([303, 601, 602]);
+/**
+ * 超出速率限制：**不是**配额耗尽。上游只在「用户 × 接口」配了速率（每分钟/每小时）时才返它，
+ * 过一会儿自己会好，所以既不整批停、也不归 `quotaLimited`——消费方按「退避后重试一次，
+ * 仍失败只算这一件」处理（SSOT 第 3 节把 302 和 303/601/602 分开列，就是为这个）。
+ */
+export const RATE_LIMIT_ERROR_CODES = new Set([302]);
 /** 凭据失效、权限不足：整批停下等配置修好。 */
 export const AUTH_ERROR_CODES = new Set([100, 600]);
 
@@ -37,6 +43,11 @@ export class TaobaoApiError extends Error {
 
   get quotaLimited(): boolean {
     return QUOTA_ERROR_CODES.has(this.code);
+  }
+
+  /** 上游限流：瞬时错误，退避后可以再试一次。 */
+  get rateLimited(): boolean {
+    return RATE_LIMIT_ERROR_CODES.has(this.code);
   }
 
   get authFailed(): boolean {

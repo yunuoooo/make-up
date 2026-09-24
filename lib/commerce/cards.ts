@@ -18,6 +18,12 @@ import type {
 export const DEFAULT_CARD_LIMIT = 8;
 export const DEFAULT_BUDGET_MS = 60_000;
 export const DEFAULT_CONCURRENCY = 2;
+/**
+ * 命中 302（超出速率限制）后的退避时长。上游的限流窗口以分钟/小时计，退避只是让一次
+ * 突发的并发撞上限制后能站起来，不是等窗口过去——所以它是「重试一次」而不是「等到成功」。
+ * 失败调用不计费（SSOT 第 8.1 节），这一次等待只花时间，不花钱。
+ */
+export const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5_000;
 
 /** 详情失败时的兜底链接：这是该商品的规范详情页，不是搜索结果页。 */
 export function itemUrl(numIid: string): string {
@@ -71,6 +77,8 @@ export type BuildProductCardsOptions = {
   limit?: number;
   budgetMs?: number;
   concurrency?: number;
+  /** 命中 302 后的退避时长，默认 `DEFAULT_RATE_LIMIT_BACKOFF_MS`；测试里调小以免拖慢。 */
+  rateLimitBackoffMs?: number;
   signal?: AbortSignal;
   cache?: ProductCardsCache;
   now?: () => number;
@@ -105,12 +113,53 @@ function failureReason(error: unknown): string {
   return "淘宝查询失败";
 }
 
-/** 只重试可重试的错（采集失败 301、HTTP 5xx、网络超时）；配额与凭据错直接抛出。 */
-async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
+/** 可被 abort 打断的睡眠：调用方断开时不该在这里空等。 */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (ms <= 0 || signal?.aborted) {
+      resolve();
+      return;
+    }
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+/** 重试用的上下文：预算与取消都由调用方给，重试自己不许造时间。 */
+type RetryContext = {
+  signal?: AbortSignal;
+  backoffMs: number;
+  deadline: number;
+  now: () => number;
+  /** 命中限流时回调一次——整批据此降并发。 */
+  onRateLimit?: () => void;
+};
+
+/**
+ * 只重试可重试的错：采集失败（301）、HTTP 5xx、网络超时各立刻重试一次；
+ * 限流（302）退避后重试一次。配额（303/601/602）与凭据错直接抛出，由上层整批停下。
+ *
+ * 302 是这里唯一会「等一下」的错：它是瞬时的，而失败的调用不计费，所以退避重试不吃成本。
+ * 但预算不够就不等了——宁可少一张卡，也不让答案等着淘宝。
+ */
+async function withRetry<T>(operation: () => Promise<T>, retry: RetryContext): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof TaobaoApiError && error.retryable) return await operation();
+    if (!(error instanceof TaobaoApiError)) throw error;
+    if (error.retryable) return await operation();
+    if (error.rateLimited) {
+      retry.onRateLimit?.();
+      if (retry.now() + retry.backoffMs < retry.deadline) {
+        await sleep(retry.backoffMs, retry.signal);
+        return await operation();
+      }
+    }
     throw error;
   }
 }
@@ -163,11 +212,27 @@ export async function buildProductCards(
   const targets = items.slice(0, limit);
   const concurrency = Math.max(1, Math.min(options.concurrency ?? DEFAULT_CONCURRENCY, targets.length || 1));
   const deadline = now() + budgetMs;
+  const rateLimitBackoffMs = Math.max(0, options.rateLimitBackoffMs ?? DEFAULT_RATE_LIMIT_BACKOFF_MS);
 
   const cards: ProductCard[] = [];
   const failed: ProductCardFailure[] = [];
   let stopReason: string | null = null;
   let cursor = 0;
+  /**
+   * 命中过 302：本轮剩余请求降到并发 1（SSOT 第 3 节给 302 的处置是「降并发或放弃」）。
+   * 只降不升——限流窗口以分钟/小时计，本批剩下的这点时间不够它恢复，再撞一次只是多花时间。
+   */
+  let throttled = false;
+
+  const retry: RetryContext = {
+    signal: options.signal,
+    backoffMs: rateLimitBackoffMs,
+    deadline,
+    now,
+    onRateLimit: () => {
+      throttled = true;
+    }
+  };
 
   const fail = (ref: ProductRef, reason: string) => {
     failed.push({ brand: ref.brand, name: ref.name, reason });
@@ -209,7 +274,10 @@ export async function buildProductCards(
 
     // tag 把这次调用归到发起它的那张卡片：并发是 2，观测层靠它才能把
     // taobao.search / taobao.detail 挂到**所属**卡片之下，而不是整批之下。
-    const found = await withRetry(() => options.client.searchItems(keyword, { page: 1, signal: options.signal, tag: key }));
+    const found = await withRetry(
+      () => options.client.searchItems(keyword, { page: 1, signal: options.signal, tag: key }),
+      retry
+    );
     const picked = pickSearchItem(found, ref.brand);
     if (!picked) {
       fail(ref, "淘宝没有搜到可用商品");
@@ -219,10 +287,14 @@ export async function buildProductCards(
 
     let detail: TaobaoItemDetail | null = null;
     try {
-      detail = await withRetry(() => options.client.getItemDetail(picked.numIid, { signal: options.signal, tag: key }));
+      detail = await withRetry(
+        () => options.client.getItemDetail(picked.numIid, { signal: options.signal, tag: key }),
+        retry
+      );
     } catch (error) {
       if (isFatal(error)) throw error;
-      // 详情失败/超时：回退搜索结果的图与拼出的详情页，不算整件失败。
+      // 详情失败/超时/限流：回退搜索结果的图与拼出的详情页，不算整件失败——
+      // 302 走的就是这条路：搜索已经拿到商品了，卡片照出，只是标成 search 回退。
     }
 
     const card = detail ? cardFromDetail(ref, picked, detail) : cardFromSearch(ref, picked);
@@ -232,9 +304,12 @@ export async function buildProductCards(
     report({ ref, ok: true, cacheHit: false, detailLevel: card.detailLevel });
   }
 
-  async function worker(): Promise<void> {
+  async function worker(index: number): Promise<void> {
     while (cursor < targets.length) {
       if (options.signal?.aborted) return;
+      // 降并发：留一个 worker 把剩下的商品走完，多出来的在**取下一件之前**退场，
+      // 所以正在跑的那件不受影响。
+      if (index > 0 && throttled) return;
       const ref = targets[cursor++];
       if (stopReason) {
         fail(ref, stopReason);
@@ -250,19 +325,18 @@ export async function buildProductCards(
       } catch (error) {
         // 抛出只可能是配额/凭据这类致命错；软失败已经在 handle 里就地报告过了，
         // 所以这里不会重复报告同一张卡片。
-        if (isFatal(error)) {
-          stopReason = fatalReason(error);
-          fail(ref, stopReason);
-        } else {
-          fail(ref, failureReason(error));
-        }
-        report({ ref, ok: false, cacheHit: false, reason: stopReason ?? failureReason(error) });
+        //
+        // 两种情况都报**自己的**原因：并发是 2，另一个 worker 可能已经写了 stopReason，
+        // 拿它当这张卡片的原因会把真实的错误码盖掉（比如把 302 记成「额度受限」）。
+        const reason = isFatal(error) ? (stopReason = fatalReason(error)) : failureReason(error);
+        fail(ref, reason);
+        report({ ref, ok: false, cacheHit: false, reason });
         continue;
       }
     }
   }
 
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  await Promise.all(Array.from({ length: concurrency }, (_, index) => worker(index)));
 
   const status: ProductCardsStatus = cards.length === 0 ? "unavailable" : failed.length ? "partial" : "ok";
   return { status, cards, failed };

@@ -205,7 +205,7 @@ export type ProductCardsState = {
 3. **图片**：详情接口的 `images[0]`（即上游 `item_imgs[0]`，SSOT 6 节）。详情失败时回退搜索结果的 `picUrl`，卡片标 `detailLevel: "search"`；两者都没有就出无图卡片，**不换商品、不用别的图凑**。
 4. **链接**：优先用详情接口的 `detail_url`。详情失败时用搜索的 `item_id` 拼 `https://item.taobao.com/item.htm?id={item_id}`——这是该商品的规范详情页地址（不是搜索结果页），同样标 `detailLevel: "search"`。连 `item_id` 都没有才不出卡并计入 `failed`。任何情况下不允许用 `s.taobao.com/search?q=` 或广告位 `auctionURL` 充当商品链接。
 5. **价格**：详情 `price` 优先，回退搜索 `price`；有就显示并标注「价格与库存以淘宝页面为准」，没有就不显示。绝不编价。
-6. **并发与预算**：并发 2，单请求超时 30s，整批总预算 60s（依据见 SSOT 第 5 节：这是采集类接口，官方建议超时 120s，按普通 REST 的秒级超时会大面积失败）。超预算的商品按失败处理，已经拿到的卡片照常发出（`status: "partial"`）。遇到 `302`／`303`／`601`／`602`（限流、配额、余额）**立即停止本轮剩余请求**：重试只会继续烧配额。
+6. **并发与预算**：并发 2，单请求超时 30s，整批总预算 60s（依据见 SSOT 第 5 节：这是采集类接口，官方建议超时 120s，按普通 REST 的秒级超时会大面积失败）。超预算的商品按失败处理，已经拿到的卡片照常发出（`status: "partial"`）。遇到 `303`／`601`／`602`（每日配额、余额、TOKEN 上限）**立即停止本轮剩余请求**：这些是终态错，重试只会再拿一次同样的错。`302`（超出速率限制）**不是终态**：退避 5s（`DEFAULT_RATE_LIMIT_BACKOFF_MS`）后重试一次，并把本轮并发降到 1；仍失败只算这一件，其余商品照查。它是瞬时的，当成配额处理会让一次抖动吃掉整批卡片（依据与实例见 SSOT 第 3 节 / 第 8.3 节）。
 7. **缓存**：key 为归一化 `brand|name|shade`，缓存已解析的卡片（不是上游原始响应），TTL 默认 24 小时，写在 `.local-data/taobao-cards.json`（复用 `lib/storage/json-store.ts`）。命中的卡片不再发请求。
 
 ## 8. 前端
@@ -244,7 +244,8 @@ export type ProductCardsState = {
 | 搜索无结果 / 结果里没有可用条目 | 该商品不出卡，进 `failed` |
 | 详情失败、超时、`code` 非 0 | 回退搜索结果的主图与拼出的商品链接，`detailLevel: "search"` |
 | `301` / HTTP 5xx / 网络超时 | 重试一次；仍失败则按「详情失败」回退 |
-| `302` / `303` / `601` / `602`（限流、配额、余额） | **立即停止本轮剩余请求**；已出的卡片保留；`status: "partial"`，卡片条补一行「本轮淘宝查询额度受限」 |
+| `303` / `601` / `602`（每日配额、余额、TOKEN 上限） | **立即停止本轮剩余请求**；已出的卡片保留；`status: "partial"`，卡片条补一行「本轮淘宝查询额度受限」 |
+| `302`（超出速率限制） | 退避 5s 后重试一次，并把本轮剩余请求降到并发 1；仍失败则按**该件自己**所处的阶段处理——搜索阶段失败即该件失败，详情阶段失败即回退 `detailLevel: "search"`，其余商品照常；原因是瞬时的，不是配额 |
 | `100` / `600`（token 失效、权限不足） | 整批停止，表现同「未配置」，同时把 `requestId` 记进服务端日志 |
 | 单件失败 | 其余卡片照常（`status: "partial"`） |
 | 全部失败 | 只渲染一行「淘宝商品信息暂不可用，可点表格里的商品名自行搜索」 |
@@ -282,7 +283,7 @@ export type ProductCardsState = {
 **L1（`npm run test:l1`，全部不发真实请求）**
 
 - `test/L1/product-block.test.ts`：合法块提取 + 正文剥离；非法 JSON／版本不符／字段为空时不出条目但**仍剥离**；多个块合并去重；超上限截断；按 `brand|name|shade` 去重；`stripProductBlock` 对流式半截文本的处理。
-- `test/L1/taobao-cards.test.ts`（注入 `fetchImpl`，数据用 SSOT 第 9 节两个示例裁剪出的 fixture）：搜索→选品→详情→卡片字段映射；标题去 `<span class=H>` 标签；`uprightImg` 缺失时回退 `pic_path` 并把 `http:` 升级为 `https:`；跳过非商品卡片与 `isP4p: "true"` 的广告位；品牌命中优先规则；只为详情失败的商品回退搜索图与 `item.htm?id=` 链接并标 `detailLevel: "search"`；`code !== 0` 时不产生编造字段；`301` 重试一次、`302`/`303`/`601`/`602` 立即停止剩余请求；并发上限与总预算；缓存命中不发请求；未配置 token 时 `configured === false` 且零请求。
+- `test/L1/taobao-cards.test.ts`（注入 `fetchImpl`，数据用 SSOT 第 9 节两个示例裁剪出的 fixture）：搜索→选品→详情→卡片字段映射；标题去 `<span class=H>` 标签；`uprightImg` 缺失时回退 `pic_path` 并把 `http:` 升级为 `https:`；跳过非商品卡片与 `isP4p: "true"` 的广告位；品牌命中优先规则；只为详情失败的商品回退搜索图与 `item.htm?id=` 链接并标 `detailLevel: "search"`；`code !== 0` 时不产生编造字段；`301` 重试一次、`303`/`601`/`602` 立即停止剩余请求、`302` 退避后重试一次并把剩余请求降到并发 1；并发上限与总预算；缓存命中不发请求；未配置 token 时 `configured === false` 且零请求。
 - `test/L1/frontend-runtime.test.ts`：`Turn.cards` 类型契约；`mergeProductCards` 的追加、按 id 覆盖、`failed` 累加与 `done` 落状态。
 
 **L3（`RUN_L3_E2E=1`）**

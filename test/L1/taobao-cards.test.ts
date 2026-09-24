@@ -8,9 +8,15 @@ import {
   pickSearchItem,
   type ProductCardRun
 } from "../../lib/commerce/cards.ts";
-import { TaobaoApiError, createTaobaoClient, productCardsEnabled, type TaobaoCallInfo } from "../../lib/commerce/taobao.ts";
+import {
+  TaobaoApiError,
+  createTaobaoClient,
+  productCardsEnabled,
+  type TaobaoCallInfo,
+  type TaobaoClient
+} from "../../lib/commerce/taobao.ts";
 import { productKey } from "../../lib/commerce/product-block.ts";
-import type { ProductCard, ProductRef, TaobaoSearchItem } from "../../lib/commerce/types.ts";
+import type { ProductCard, ProductRef, TaobaoItemDetail, TaobaoSearchItem } from "../../lib/commerce/types.ts";
 
 /**
  * 上游响应来自真实调用裁出的 fixture（见 SSOT 第 9 节），字段名改了就靠这里回归。
@@ -313,6 +319,128 @@ test("配额码：停止本轮剩余请求，其余记失败", async () => {
   assert.equal(outcome.failed.length, 3);
   assert.equal(searchCalls, 1, "配额耗尽后不该继续发请求");
   assert.ok(outcome.failed.every((item) => item.reason.includes("额度受限")));
+});
+
+/**
+ * 302（超出速率限制）与 303（超出每日配额）是两回事：前者是瞬时的，上游只在「用户 × 接口」
+ * 配了速率时才返它，过一会儿自己会好。把这些用例单列，是因为线上出过一次 302 把整批打死、
+ * 8 件商品里 6 件连试都没试的故障（SSOT 第 3 节 / 第 8.3 节）。
+ */
+test("302 限流：退避后重试一次，成功就照常出卡", async () => {
+  const { search, detail } = await fixtures();
+  let detailCalls = 0;
+  const codes: number[] = [];
+  const { fetchImpl } = stubFetch({
+    search: () => ({ body: search }),
+    detail: () => {
+      detailCalls += 1;
+      // 第一次限流，退避后的第二次正常——这正是 302 值得重试的原因：它是瞬时的。
+      return detailCalls === 1
+        ? { body: { code: 302, message: "超出速率限制", requestId: "req_rate", data: null } }
+        : { body: detail };
+    }
+  });
+  const client = createTaobaoClient({
+    fetchImpl,
+    env,
+    onCall: (info) => {
+      if (info.endpoint === "detail" && typeof info.code === "number") codes.push(info.code);
+    }
+  });
+
+  const outcome = await buildProductCards([ref], { client, rateLimitBackoffMs: 1 });
+
+  assert.equal(detailCalls, 2, "退避后要再试一次，不是直接放弃");
+  assert.deepEqual(codes, [302, 0]);
+  assert.equal(outcome.cards.length, 1);
+  assert.equal(outcome.cards[0].detailLevel, "detail");
+  assert.equal(outcome.status, "ok");
+});
+
+test("302 限流：只算这一件失败，后面的商品照常查完", async () => {
+  const { search, detail } = await fixtures();
+  const refs: ProductRef[] = [
+    ref,
+    { category: "唇妆", brand: "MAC", name: "子弹头口红", section: "necessary" },
+    { category: "眉笔", brand: "植村秀", name: "砍刀眉笔", section: "necessary" }
+  ];
+  let searchCalls = 0;
+  const { fetchImpl } = stubFetch({
+    search: () => {
+      searchCalls += 1;
+      // 第一件一直限流（重试那次也 302），后面两件正常。
+      return searchCalls <= 2
+        ? { body: { code: 302, message: "超出速率限制", requestId: "req_rate", data: null } }
+        : { body: search };
+    },
+    detail: () => ({ body: detail })
+  });
+
+  const outcome = await buildProductCards(refs, {
+    client: createTaobaoClient({ fetchImpl, env }),
+    concurrency: 1,
+    rateLimitBackoffMs: 1
+  });
+
+  assert.equal(searchCalls, 4, "限流只该多花一次重试，不该让后面两件连试都不试");
+  assert.equal(outcome.cards.length, 2);
+  assert.equal(outcome.failed.length, 1);
+  assert.equal(outcome.failed[0].reason, "淘宝接口失败 code=302", "失败原因要带真实错误码，不能被「额度受限」盖掉");
+  assert.equal(outcome.status, "partial");
+});
+
+test("302 限流：详情撞上限流退到搜索回退卡，不算整件失败", async () => {
+  const { search } = await fixtures();
+  const { fetchImpl } = stubFetch({
+    search: () => ({ body: search }),
+    detail: () => ({ body: { code: 302, message: "超出速率限制", data: null } })
+  });
+
+  const outcome = await buildProductCards([ref], {
+    client: createTaobaoClient({ fetchImpl, env }),
+    rateLimitBackoffMs: 1
+  });
+
+  assert.equal(outcome.cards.length, 1);
+  assert.equal(outcome.cards[0].detailLevel, "search", "搜索已经拿到商品了，卡片照出");
+  assert.equal(outcome.cards[0].purchaseUrl, itemUrl(SEARCH_ITEM_ID));
+  assert.equal(outcome.status, "ok");
+});
+
+test("302 之后本轮降并发：剩下的商品一件一件查", async () => {
+  const refs: ProductRef[] = Array.from({ length: 5 }, (_, index) => ({ ...ref, name: `腮红${index}` }));
+  const item: TaobaoSearchItem = { numIid: "1", title: "某件商品", isP4p: false };
+  const detail: TaobaoItemDetail = { numIid: "1", title: "某件商品", images: [] };
+  let inFlight = 0;
+  let maxInFlightAfterRateLimit = 0;
+  let rateLimited = false;
+
+  // 用假 client 而不是 stubFetch：只有能控制每次调用何时返回，才能稳定地量「同时在跑几条」。
+  const client: TaobaoClient = {
+    configured: true,
+    async searchItems(keyword) {
+      inFlight += 1;
+      if (rateLimited) maxInFlightAfterRateLimit = Math.max(maxInFlightAfterRateLimit, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      // 第一件一直限流（重试那次也 302），退避救不回来；其余正常。
+      // 这里刻意不写成「第一次调用 302」——那样退避重试就能消化掉，测不出「302 不再整批停」。
+      if (keyword.includes("腮红0")) {
+        rateLimited = true;
+        throw new TaobaoApiError("限流", { code: 302, retryable: false });
+      }
+      return [item];
+    },
+    async getItemDetail() {
+      return detail;
+    }
+  };
+
+  const outcome = await buildProductCards(refs, { client, rateLimitBackoffMs: 1 });
+
+  assert.equal(outcome.cards.length, 4, "限流的那件失败，其余照查");
+  assert.equal(outcome.failed.length, 1);
+  assert.equal(maxInFlightAfterRateLimit, 1, "限流之后同时在跑的上游调用不该超过 1 条");
 });
 
 test("总预算：超预算的商品不再发请求", async () => {
