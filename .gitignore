@@ -4,11 +4,14 @@
 !.env.example
 .next/
 node_modules/
+.venv/
+.venv-*/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
 .local-data/
 .tmp/
 tsconfig.tsbuildinfo
 npm-debug.log*
-
-# Local standalone Sites checkout. The Git-tracked export lives under
-# frontend/makeup-advisor-site/.
-/makeup-advisor-site/

@@ -1,0 +1,101 @@
+{
+  "code": 0,
+  "message": null,
+  "recordTime": null,
+  "data": {
+    "item": {
+      "itemId": "801330948681",
+      "title": "川川也 美式原创高街正肩直筒短袖T恤女街头夏季新款日常上衣潮牌",
+      "price": 78,
+      "couponPrice": "",
+      "originalPrice": 78,
+      "images": [
+        "https://img.alicdn.com/imgextra/i1/3159571955/O1CN01kiFYsZbYULH2R3rs_!!4611686018427387379-0-item_pic.jpg",
+        "https://img.alicdn.com/imgextra/i1/3159571955/O1CN015vFdcq1QJRGmTO5iR_!!3159571955.jpg",
+        "https://img.alicdn.com/imgextra/i1/3159571955/O1CN01oMKQjP1QJRGiximO4_!!3159571955.jpg"
+      ],
+      "detailImages": [
+        "https://img.alicdn.com/imgextra/i4/3159571955/O1CN018wl9OF1QJROB46zRJ_!!3159571955.jpg",
+        "https://img.alicdn.com/imgextra/i3/3159571955/O1CN01G9gCdX1QJROBn87vD_!!3159571955.jpg"
+      ],
+      "attribute": [
+        {
+          "value": "街头风",
+          "key": "风格"
+        },
+        {
+          "value": "直筒型",
+          "key": "版型分类"
+        }
+      ],
+      "desc": "<div style=\"width: 750.0px\"><img src=\"https://img.alicdn.com/imgextra/placeholder.png\"></div>"
+    },
+    "seller": {
+      "shopName": "川川也",
+      "shopId": "373894497"
+    },
+    "skuBase": {
+      "skus": [
+        {
+          "propPath": "1627207:28320;20509:28314",
+          "skuId": "5459369881641"
+        },
+        {
+          "propPath": "1627207:28320;20509:28315",
+          "skuId": "5459369881642"
+        }
+      ],
+      "props": [
+        {
+          "pname": "尺码",
+          "values": [
+            {
+              "vid": "28314",
+              "vname": "S",
+              "sku_url": ""
+            },
+            {
+              "vid": "28315",
+              "vname": "M",
+              "sku_url": ""
+            },
+            {
+              "vid": "28316",
+              "vname": "L",
+              "sku_url": ""
+            },
+            {
+              "vid": "28317",
+              "vname": "XL",
+              "sku_url": ""
+            },
+            {
+              "vid": "6145171",
+              "vname": "2XL",
+              "sku_url": ""
+            }
+          ],
+          "pid": "20509"
+        },
+        {
+          "pname": "主要颜色",
+          "values": [
+            {
+              "vid": "28320",
+              "vname": "白色",
+              "sku_url": "https://img.alicdn.com/imgextra/i1/3159571955/O1CN01JK5jIf1QJRGdCLbZL_!!3159571955.jpg"
+            },
+            {
+              "vid": "9023470",
+              "vname": "白色长袖",
+              "sku_url": "https://img.alicdn.com/imgextra/i2/3159571955/O1CN01rDgife1QJRIQjuOf0_!!3159571955.png"
+            }
+          ],
+          "pid": "1627207"
+        }
+      ]
+    },
+    "status": 1,
+    "tid": "801330948681"
+  }
+}

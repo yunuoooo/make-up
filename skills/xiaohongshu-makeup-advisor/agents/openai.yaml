@@ -1,4 +1,0 @@
-interface:
-  display_name: "小红书妆容顾问"
-  short_description: "基于小红书先给通用妆容方案，再按个人条件完成精细推荐"
-  default_prompt: "使用 $xiaohongshu-makeup-advisor 研究亚裔妆，先给我一份通用推荐，再引导我做个性化筛选。"
