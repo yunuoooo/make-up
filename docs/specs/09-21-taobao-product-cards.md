@@ -2,7 +2,7 @@
 
 Status: implemented and live-verified
 Date: 2026-09-21
-Related specs: [001-mvp.md](./001-mvp.md) · [09-07-xhs-mcp-integration.md](./09-07-xhs-mcp-integration.md) · [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md)
+Related specs: [001-mvp.md](./001-mvp.md) · [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md) · [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md)
 
 ## 0. 文档目的
 
@@ -316,7 +316,7 @@ export type ProductCardsState = {
 
 `buildProductCards` 跑通 2 张卡片、1 件因 `code=301` 失败，总耗时 40.9s，`status: "partial"`。卡片字段全部来自淘宝：图 `img.alicdn.com/…jpg`、价 `17.90`、店铺 `Bymi美妆集合店`、链接 `item.taobao.com/item.htm?id=1004620982324`、`detailLevel: "detail"`。
 
-**端到端（`next dev` + 真实 pi + 真实小红书 MCP + 真实 token）**
+**端到端（`next dev` + 真实 pi + 真实的 xhs 与淘宝 token）**
 
 > 下面这组数字是 **V3 时期**（2026-09-21）的记录，链路行为仍然有效，但「每件 2 次调用」现在的第二次已经是 V6。成本口径见 SSOT 第 8.2 节。
 

@@ -91,7 +91,8 @@ Related specs: [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md) · [09-0
 落盘是**新增的一份敏感数据**，与"输出脱敏"是两件事：
 
 - 会话 JSONL 里含 `xhs_*` 工具结果原文：笔记正文、图片 URL、`xsec_token`、Cookie 相关字段（以工具实际返回为准）。当前 `redactSensitive` 只作用于 SSE 与答案（`lib/pi/bridge.ts:174,288,291`），**对落盘无效**。
-- **实现期修正**：本节原先建议"在工具层抹掉 `xsec_token`"，前提"模型不需要 token"是错的。上游 `get_feed_detail` 强制要求 `xsec_token`，值来自 `search_feeds` 返回的 `xsecToken` 字段（`xiaohongshu-mcp/mcp_server.go:59`、`mcp-handlers.go:363`：缺参直接返回"缺少 xsec_token 参数"）。一律抹掉会让模型再也读不了任何笔记详情，正好打断本 spec 要支持的跨轮流程。
+- **实现期修正（2026-09-23）**：本节原先建议"在工具层抹掉 `xsec_token`"，前提"模型不需要 token"是错的。当时的 MCP 上游 `get_feed_detail` 强制要求该 token（值来自 `search_feeds` 的 `xsecToken`，缺参直接返回"缺少 xsec_token 参数"；那份源码随 Phase D 删除）。一律抹掉会让模型再也读不了任何笔记详情，正好打断本 spec 要支持的跨轮流程。
+- **2026-09-24 补充：这件事后来真的做成了**。取数换成 TikHub 之后，扩展在搜索结果里记住 `noteId → xsec_token`，对模型**只暴露 `noteId`**（[09-24 决策 3](./09-24-xhs-api-integration.md)）。当时预判的代价也真的存在：**跨轮的详情读取会冷缓存失败**——映射只在进程内存里，第二轮是空 Map，而会话里留下的只有 noteId。扩展对此的处理是把 gate 失败说清楚（`unknown-note`，提示先搜索），所以是"多搜一次"而不是"读不到"。这是**有意取舍**：拿跨轮详情换 token 不进上下文。
   - 要做到"落盘无 token"只有一条路：扩展记住 `feed_id → xsec_token`，对模型只暴露 `feed_id`，调用上游前自己补 token。代价是**跨轮的详情读取会冷缓存失败**——第二轮进程里缓存是空的，而第一轮留在会话里的搜索结果已经没有 token 了。会话本来就要求模型能在后续轮次继续读详情，这个代价和目的直接冲突。
   - 因此本次**不改工具层**。落盘里的 token 属于"过期即失效的笔记访问令牌"，不是用户账号凭据（Cookie 只在上游进程里，从不进工具返回）。真正的防线是第 4.6 节的留存与删除，以及 `parsePiJsonLine`（`lib/pi/events.ts:23`）已经覆盖的 SSE 与 trace 脱敏。
   - 若以后仍要抹掉：应当同时把 `feed_id → token` 的映射持久化到会话之外（而不是进程内存），否则跨轮读取必然退化。
@@ -131,7 +132,7 @@ Related specs: [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md) · [09-0
 1. `lib/pi/session.ts`（新）：id 校验、会话路径/存在性、列出与删除。
 2. `lib/pi/bridge.ts`：参数改造、`conversationId` 必填、`status` 事件补 `sessionFound`、消费 stderr。
 3. `app/api/chat/route.ts`：400 校验与并发互斥。
-4. `.pi/extensions/xiaohongshu-mcp.ts`：工具层脱敏 `xsec_token`（若采纳 4.6）。
+4. `.pi/extensions/`：工具层脱敏 `xsec_token`（若采纳 4.6）。**当时没做**（见 4.6 的实现期修正）；2026-09-24 换源时随 [09-24 决策 3](./09-24-xhs-api-integration.md) 落地——token 现在根本不进上下文。
 5. 前端：`STATELESS_NOTICE` 文案、`sessionFound` 提示、删除对话时的服务端联动。
 6. `README.md` / `AGENTS.md`：运行时边界里补一句"会话落在 `.local-data/pi/sessions/`"。
 

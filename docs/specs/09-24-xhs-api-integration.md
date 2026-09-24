@@ -1,6 +1,6 @@
 # 小红书取数架构：TikHub（搜索 + 详情）
 
-Status: 设计已定，未动代码
+Status: Implemented（2026-09-24）—— 设计、切换与 Phase D 清账都已完成；第 8/10/11 节是留档，不是待办
 Date: 2026-09-24
 Revised: 2026-09-24 — 检索改为**固定只取图文笔记**（决策 11），`noteType` 不再列为后续增量；技能与工具描述同步。
 Revised: 2026-09-24 — 供应商从 Just One 换成 **TikHub**（同一篇图文笔记 Just One 返回空 `data`，TikHub 拿到全文）。工具契约、闸门、链接策略、图文限定**全部不变**，只换数据源实现与字段 SSOT。
@@ -9,6 +9,8 @@ Related specs: [09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)（字段�
 ## 0. 文档目的
 
 本文定义「小红书取数从 `xiaohongshu-mcp` 换成 HTTP 数据源（现为 TikHub）」的**架构决策与改动清单**：谁调、调什么、边界在哪、哪些文件跟着改、怎么验收。
+
+**迁移已经做完（2026-09-24）**：MCP 那条链路连同二进制、脚本、部署文档一起删掉了，现在只有 TikHub 一条。第 2、3、5–7 节是**现行架构**；第 8、10、11 节是**完成记录**（留着是为了「当初为什么这么改」有处可查，不是待办清单）。
 
 - **字段、参数、错误码、计费陷阱**不在本文复述，一律以 [TikHub SSOT](./09-24-tikhub-xhs-ssot.md) 为准。
 - 本文**不改**技能的输出格式（拆解表、`looktrace-products` 商品块）、不改 `looktrace.answer.v1`、不动淘宝卡片链路——换源不改变这些契约。
@@ -21,16 +23,16 @@ Related specs: [09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)（字段�
 | # | 决策 | 选择 | 理由 |
 | --- | --- | --- | --- |
 | 1 | 取数范围 | **搜索 1–2 页 + 详情 ≤10 篇，不取评论** | 搜索结果只给约 60 字预览，正文必须走详情（SSOT 第 6 节）。详情篇数取技能「6–10 篇」的**上界**：2026-09-24 验收通过后由维护者从暂定的 6 调上来。这个数字是钱的旋钮，不是技术约束，见第 4 节。评论在技能里的唯一用途是「发现争议/补充线索」（`references/research-method.md` 第 2 节），是次要信号；为它多付一类调用不划算，见第 5 节 |
-| 2 | 工具名 | **与数据源解耦**：`xhs_source_status` / `xhs_search_notes` / `xhs_get_note_detail`，两种实现共用同名 | 迁移期要在两种数据源之间切换。名字固定后，技能、系统提示词、`lib/pi/events.ts` 的映射、前端图标都不随模式变 |
-| 3 | `xsec_token` | **mcp 模式下也不再进模型上下文**：由扩展在搜索结果里记住、详情调用时内部补上 | 统一契约后，参数只剩 `noteId`，token 顺带被挤出上下文——比 MCP 时代的「进上下文但脱敏」更强 |
+| 2 | 工具名 | **与数据源实现解耦**：`xhs_source_status` / `xhs_search_notes` / `xhs_get_note_detail` | 名字固定后，技能、系统提示词、`lib/pi/events.ts` 的映射、前端图标都不随数据源变。这条已经付过一次账：从 Just One 换成 TikHub 只动了 `lib/xhs/tikhub.ts` 和一份 SSOT，上层一行没改 |
+| 3 | `xsec_token` | **不进模型上下文**：由扩展在搜索结果里记住、详情调用时内部补上 | 参数只剩 `noteId`，token 顺带被挤出上下文——比 MCP 时代的「进上下文但脱敏」更强 |
 | 4 | 笔记链接 | **不给可点链接**（SSOT 第 8 节方案 A）：只给「标题 + 创作者 + 可见日期 + 站内复搜关键词」 | 拼出的 `/explore/{id}` 匿名 4/4 打不开；能点开的必带 `xsec_token`。技能已允许这种降级（`SKILL.md` 边界段） |
 | 5 | 图片 | 规范化后的 CDN URL **可以进工具结果、上下文与答案** | 前端已有 `ReferenceImage`（`referrerPolicy="no-referrer"`，注释写明小红书图床防盗链），这是既有做法。这是对现行「带签名的临时 URL 要脱敏」约定（`SKILL.md` 第 48 条、`lib/pi/bridge.ts:61` 系统提示词）的**收窄**，见第 6.4 节，必须显式登记 |
-| 6 | 迁移方式 | **开关并存**：`XHS_SOURCE_MODE` 默认仍为 `mcp`，api 分支同期实现，L3 验收通过后切默认，再删 MCP 资产 | 有回退路径，与 SSOT 第 15.10 条一致 |
+| 6 | 迁移方式 | **开关并存 → 清账（已完成）**：迁移期 `XHS_SOURCE_MODE` 默认仍为 `mcp`，api 分支同期实现，L3 验收通过后切默认，最后删掉 MCP 资产 | 有回退路径才不会在换源当天变成单点。四个阶段的实际结果见第 10 节 |
 | 7 | 总开关 | **不设独立总开关**，用「mode + `XHS_API_TOKEN` 是否为空」两级 | 淘宝默认关（`TAOBAO_CARDS_ENABLED`）是因为它是可选补全；小红书是主链路，关掉就没有产品。空 token = 不发请求、链路降级（SSOT 第 11 节） |
 | 8 | 失败形态 | **闸门**返回可读 JSON + `details.reason`；**上游失败**抛出可读错误 | 闸门（未知 noteId、预算用尽）是预期内的结果，不该显示成故障；上游失败抛出去才能让观测层标成 failed（09-22 的失败分析就靠这个），而 pi 的失败工具结果同样把原因交给模型，模型两边都看得到 |
-| 9 | 串行队列 | **删除**执行队列 | 原队列是为 Chromium 的有状态驱动加的（`.pi/extensions/xiaohongshu-mcp.ts:132`），HTTP 数据接口没有这个约束 |
+| 9 | 串行队列 | **删除**执行队列 | 原队列是为 Chromium 的有状态驱动加的（`xiaohongshu-mcp.ts:132`，该文件已随 Phase D 删除），HTTP 数据接口没有这个约束 |
 | 10 | 技能改动 | **本文直接给出条款级改动**（第 7 节） | 换源与技能改动在同一次改动里闭环，不留「已知不一致」 |
-| 11 | 笔记类型 | **检索固定只取图文**：api 模式传 `note_type=普通笔记`（服务端过滤，TikHub 是中文枚举），mcp 回退链路在扩展里丢掉明确的 `video` 条目 | 技能的产出要一张能看清妆效的**完成妆画面**，而视频笔记在数据源里只有一张封面、拿不到画面帧。代价是候选池变小（视频在部分关键词下占 45–66%，09-07 第 12.3 节），所以搜不到时要换关键词而不是放宽类型 |
+| 11 | 笔记类型 | **检索固定只取图文**：请求带 `note_type=普通笔记`（服务端过滤，TikHub 是中文枚举） | 技能的产出要一张能看清妆效的**完成妆画面**，而视频笔记在数据源里只有一张封面、拿不到画面帧。代价是候选池变小（视频在部分关键词下占 45–66%，09-07 第 12.3 节），所以搜不到时要换关键词而不是放宽类型 |
 
 ## 2. 目标架构
 
@@ -40,15 +42,16 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
     ▼
 .pi/extensions/xhs-source.ts            工具层：注册统一工具名、闸门、受控序列化、脱敏
     │
-    ├── XHS_SOURCE_MODE=api ──▶ lib/xhs/tikhub.ts ──▶ https://api.tikhub.io
-    └── XHS_SOURCE_MODE=mcp ──▶ 本地 xiaohongshu-mcp（迁移期回退路径，Phase D 删除）
+    │
+    └── XHS_SOURCE_MODE=api ──▶ lib/xhs/tikhub.ts ──▶ https://api.tikhub.io
+        （没有第二条分支：MCP 回退路径已随 Phase D 删除）
 ```
 
 | 模块 | 职责 | 不做什么 |
 | --- | --- | --- |
 | `lib/xhs/tikhub.ts` | HTTP 调用、两层信封判据、重试与超时、按 SSOT 第 8 节映射到内部类型、图片 URL 规范化 | 不认识 pi、不认识技能、不产出给模型看的文案 |
 | `lib/xhs/types.ts`（新建） | `XhsNoteSummary` / `XhsNoteDetail` 等内部类型 | — |
-| `.pi/extensions/xhs-source.ts`（由 `xiaohongshu-mcp.ts` 改名） | 注册工具、模式分支、本轮预算与 noteId 闸门、把内部类型序列化成模型可读文本、`details.reason` | 不写业务判断（该读几篇、该怎么回答是技能的事） |
+| `.pi/extensions/xhs-source.ts` | 注册工具、本轮预算与 noteId 闸门、把内部类型序列化成模型可读文本、`details.reason` | 不写业务判断（该读几篇、该怎么回答是技能的事） |
 
 依赖方向单向：扩展 import `lib/xhs/*`，`lib/xhs/*` 只依赖 Node 内建（对齐 `lib/commerce/taobao.ts` 的写法）。`lib/xhs/tikhub.ts` 是**换供应商唯一要改的文件**（SSOT 第 0 节）——从 Just One 换到 TikHub 就是一次实证：只换了这个文件 + 一份新 SSOT，工具契约、技能、闸门都没动。
 
@@ -56,23 +59,21 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 ### 3.1 工具清单
 
-| 统一工具名 | 参数 | api 实现 | mcp 实现（回退路径） |
-| --- | --- | --- | --- |
-| `xhs_source_status` | 无 | 报：当前模式、是否配了 token、本轮已用调用数（不回显 token 本身） | 转发 `check_login_status` |
-| `xhs_search_notes` | `keyword`（必填）、`page`（可选，默认 1）、`sortType`（可选，默认 `general`） | `GET /api/v1/xiaohongshu/app_v2/search_notes`，**固定带 `note_type=普通笔记`**（决策 11） | `search_feeds`，并存下 `feed_id → xsec_token` 与 `noteCard.type`；返回前丢掉明确的 `video` 条目（只丢明确是视频的，类型未知一律放行） |
-| `xhs_get_note_detail` | `noteId`（必填） | `GET /api/v1/xiaohongshu/app_v2/get_image_note_detail`（只吃 `note_id`，SSOT 第 2.2 节） | `get_feed_detail`，内部补 `xsec_token`；视频笔记照旧拦在本地（09-07 第 12.4 节的不变量保留） |
+| 工具名 | 参数 | 实现（唯一链路：TikHub） |
+| --- | --- | --- |
+| `xhs_source_status` | 无 | 报：当前模式、是否配了 token、本轮已用调用数（不回显 token 本身） |
+| `xhs_search_notes` | `keyword`（必填）、`page`（可选，默认 1）、`sortType`（可选，默认 `general`） | `GET /api/v1/xiaohongshu/app_v2/search_notes`，**固定带 `note_type=普通笔记`**（决策 11）；内部存下 `noteId → xsec_token` |
+| `xhs_get_note_detail` | `noteId`（必填） | `GET /api/v1/xiaohongshu/app_v2/get_image_note_detail`（只吃 `note_id`，SSOT 第 2.2 节），内部补 `xsec_token` |
 
 `noteType` / `timeFilter` **v1 不暴露给模型**：默认值已经够用，多一个枚举多一份误用面。`noteType` 更进一步，**固定写死成图文过滤**（决策 11）——这不是默认值，是不给选择：视频笔记在链路里拿不到画面帧。要临时放宽只能改代码里的常量，不要在技能或提示词里给它留口子。
 
-`lib/pi/bridge.ts` 的白名单随之改为 `read,xhs_source_status,xhs_search_notes,xhs_get_note_detail`——因为工具名与模式无关，**切换模式不需要改白名单**。
+`lib/pi/bridge.ts` 的白名单是 `read,xhs_source_status,xhs_search_notes,xhs_get_note_detail`——工具名与数据源实现无关，**换供应商、换传输都不需要改白名单**。
 
 ### 3.2 `xhs_search_notes` 返回形状
 
 给模型的是**受控映射后的 JSON 文本**，不是上游原始响应（上游单条 66 字段、混合页内状态，SSOT 第 5 节）。
 
-> **只有 api 模式是受控形状。** mcp 回退路径（迁移期）**按上游原样透传**，一是不在回退链路上引入新行为（它今天就是这么工作的，改了等于动生产默认路径），二是把上游卡片映射成同一形状需要猜一批没验证过的字段名。代价是两种模式的 payload 形状不同——**技能因此不能依赖任何字段名**，它只按「标题 / 作者 / 正文 / 日期 / 图片」这些语义描述，两边的形状它都能读。切默认后 mcp 分支随 Phase D 删除，这个差异随之消失。
->
-> **一处例外（决策 11）**：图文过滤两种模式都要做，所以 mcp 分支会解析返回、丢掉明确的 `video` 条目再交出去——这是唯一的「回退链路新行为」，理由是它只删模型本来就该跳过的条目，且解析失败时原样透传，不会因为形状变化把结果清空。
+> **形状是受控的，这是硬约束。** 上游单条 66 字段、混着页内状态与跟踪参数，一律不过映射层就进不了上下文。**技能因此不能依赖任何字段名**——它只按「标题 / 作者 / 正文 / 日期 / 图片」这些语义描述，形状变了技能照常能读。（迁移期 MCP 回退路径曾经原样透传上游卡片，两种模式形状不同；那条路径已删除，现在只有一种形状。）
 
 ```json
 {
@@ -137,7 +138,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 1. **noteId 闸门（api 模式）**：只允许 `xhs_get_note_detail` 打开**本轮 `xhs_search_notes` 实际返回过**的 `noteId`。其它一律拒绝并给出可读说明，不发出请求。
    - 防的是三件事：模型幻觉出一个 id、用户消息里的 id 被直接当成一次计费调用（09-07 第 3.2 节「`feed_id` 和 `xsec_token` 必须来自同一次搜索…不能由用户消息直接传入」的延续）、猜 id 烧配额。
-   - **行为变化**：MCP 时代对未知 `feed_id` 是放行的（`test/L1/xhs-mcp-extension.test.ts` 第 119 行钉着这条）。api 模式下收紧，因为详情按次计费且入参不再有凭据属性；mcp 回退路径保持放行，**不在回退链路上引入新行为**。
+   - **行为变化**：MCP 时代对未知 `feed_id` 是放行的。现在收紧成硬拦：详情按次计费，而 noteId 是模型从用户消息或上下文里抄来的——放行等于把一次抄错变成一次计费调用。
    - 已知张力：技能允许「用用户提供的笔记链接继续分析」。若之后接入 SSOT 第 2.5 节的短链解析（入站方向），这个闸门要同步放宽（第 12 节）。
 2. **预算闸门**：本轮搜索次数 ≤ `XHS_API_SEARCH_PAGES`、详情次数 ≤ `XHS_API_DETAIL_LIMIT`。用尽后工具返回「本轮取数预算已用尽」+ `details.reason = "budget-exhausted"`，不发请求。这是**钱的保险丝**：模型多读几篇的诱惑始终存在，而单次调用是计费的。
 
@@ -178,7 +179,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 **降级说明：api 链路的详情上限是第一次真正生效的上限。** 这一点必须写清楚，否则会低估换源的代价：
 
-- `XHS_MCP_DETAIL_LIMIT=2` 与 `XHS_MCP_SEARCH_LIMIT=5` 是 09-07 那套 Python `agent_service/` 设计的遗留，**仓库里没有任何代码读它们**（`grep` 全空）。线上 pi 链路中，读几篇详情由模型自己决定，实际边界只有技能写的「6–10 篇」和时间（单次 45s/60s、整轮 180s）。
+- `XHS_MCP_DETAIL_LIMIT=2` 与 `XHS_MCP_SEARCH_LIMIT=5` 是 09-07 那套 Python `agent_service/` 设计的遗留，**从来没有代码读它们**，已随 Phase D 从 `.env.example` 一并清掉。线上 pi 链路中，读几篇详情由模型自己决定，实际边界只有技能写的「6–10 篇」和时间（单次 60s、整轮 60s 预算）。
 - 所以「详情 ≤10」不是沿用什么旧限制，而是**第一次给这条链路装上硬上限**。它之所以该存在，是因为按次计费——MCP 是自建浏览器，边际成本为零，读 10 篇和读 2 篇只差时间；API 每读一篇都是钱（SSOT 第 13 节已把「按次计费」登记为换源新引入的代价）。
 - 为什么取 **6**：技能「6–10 篇」的下界，也刚好落在 `references/research-method.md` 第 3 节「两位以上独立创作者重复出现才叫常见特征」的证据要求之上。取 2 会直接打掉这个产品最核心的断言。
 - 为什么不是更高：单价未知（第 15.8 条）。**6 是暂定值，不是结论**——Phase B 记录单轮调用次数与金额后回填；调整只需要改环境变量，不需要改代码（闸门的实现只认这个值）。
@@ -210,7 +211,7 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 ### 6.2 新增/收紧
 
-- **mode + token 两级开关**：`XHS_SOURCE_MODE=api` 且 token 非空才发请求；任一不满足即 `not-configured` 降级，**不允许静默回退到 mcp 或 mock 并伪装成真实来源**（09-07 第 1.2 节的同一条原则）。
+- **mode + token 两级开关**：`XHS_SOURCE_MODE=api` 且 token 非空才发请求；任一不满足即 `not-configured` 降级，**不允许回退到别处再伪装成真实来源**（09-07 第 1.2 节的同一条原则，只是现在没有「别处」可回了）。
 - **noteId 闸门**（第 3.4 节）。
 - **预算闸门**（第 3.4 节）。
 
@@ -268,38 +269,38 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 拆解表结构、`💰`/`✅` 规则、`looktrace-products` 商品块、双阶段 Happy Path、`references/happy-path.md` ——**换源不改变这些契约**。商品块仍由技能产出、由既有淘宝链路补全商品图与链接。
 
-## 8. 全仓库改动清单
+## 8. 全仓库改动清单（已完成）
 
-| 文件 | 现状 | 改法 |
+迁移期各阶段的改动与结果。这张表是**留档**，不是待办：
+
+| 文件 | 改法 | 结果 |
 | --- | --- | --- |
-| `lib/xhs/tikhub.ts` | 由 `justoneapi.ts` 换名重写 | HTTP + 两层信封 + 重试 + SSOT 第 8 节映射 + 图片规范化 |
-| `lib/xhs/types.ts` | 不存在 | 新建：内部类型 |
-| `.pi/extensions/xiaohongshu-mcp.ts` | 只服务 MCP | 改名为 `xhs-source.ts`，按 `XHS_SOURCE_MODE` 分支，注册统一工具名，加两个闸门 |
-| `.pi/settings.json` | `extensions/xiaohongshu-mcp.ts` | 改文件名 |
-| `lib/pi/bridge.ts:105` | 默认扩展路径指向旧文件名 | 改名；`READ_ONLY_TOOL_ALLOWLIST` 换成新工具名（第 3.1 节） |
-| `lib/pi/bridge.ts` 系统提示词 | 「只读的 `xhs_*` MCP 工具」、脱敏句含「带签名 URL」 | 改为「只读的 `xhs_*` 数据源工具」；脱敏句按第 6.4 节收窄到凭据类 |
-| `lib/pi/events.ts:189-220` | `summarizeToolCall` / `summarizeToolResult` 按旧工具名分支 | 换名（`events.ts:194-198` 是三个 `case`）；`summarizeToolResult` 增加 `details.reason` 的文案分支（第 3.5 节） |
-| `frontend/components/chat/TurnTrace.tsx:15-17` | 工具名 → 图标 | 换名（`xhs_source_status` 用 `ShieldCheck`，搜索/详情用 `Search`） |
-| `xiaohongshu-makeup-advisor-latest/SKILL.md` + `references/research-method.md` | 见第 7 节 | 按第 7 节逐条改 |
-| `test/L1/xhs-mcp-extension.test.ts` | 钉「视频笔记不发上游请求」 | 改名 `xhs-source-extension.test.ts`；**保留** mcp 分支的视频拦截用例，**新增** api 分支的三条：未知 noteId 不发请求、预算用尽不发请求、未配 token 不发请求 |
-| `test/L1/xhs-tikhub.test.ts` | 由 `xhs-justoneapi.test.ts` 改名重写 | 两层信封、计费陷阱（内层失败**不重试**）、映射、分页凭据、图片规范化。fixture 用**真实详情响应**裁剪（token 全部换假值） |
-| `.env.example` / `.env` | 只有 `XHS_MCP_*`（`XHS_SOURCE_MODE` 在但**没有代码读它**） | 加 `XHS_API_*`（SSOT 第 11 节）；迁移期 `XHS_MCP_*` 保留 |
-| `README.md` | 配置表、命令表、故障排查都写着 MCP/风控/视频 | 换源后改；**切默认前不改**（回退路径仍是真的），Phase D 一起清理 |
-| `docs/xhs-mcp-local.md` | 本地 MCP 部署说明 | 头部标注「迁移期文档」，Phase D 删除或重写为 API 配置说明 |
-| `AGENTS.md` | `.pi/extensions/` 描述为「把 MCP 注册为只读工具」；无 `lib/xhs/` | 补 `lib/xhs/`；改扩展描述；给 `xiaohongshu-mcp/`、`scripts/` 标迁移期 |
-| `scripts/xhs-*`、`xiaohongshu-mcp/` | 本地服务与二进制 | 迁移期保留，Phase D 删除（含 `install-xhs-mcp-launch-agent`） |
-| `docs/plan/003-technology-selection-and-evolution.md` | 含 MCP 选型叙事 | Phase D 补一段「后来为什么换成 API」 |
+| `lib/xhs/tikhub.ts` | HTTP + 两层信封 + 重试 + SSOT 第 8 节映射 + 图片规范化 | ✅ 由 `justoneapi.ts` 换名重写，换供应商时只动了这一处 |
+| `lib/xhs/types.ts` | 新建：内部类型 | ✅ |
+| `.pi/extensions/xhs-source.ts` | 注册统一工具名，加 noteId 与预算两个闸门 | ✅ 由 `xiaohongshu-mcp.ts` 改名；MCP 分支随 Phase D 删除 |
+| `.pi/settings.json`、`lib/pi/bridge.ts` | 扩展路径与 `READ_ONLY_TOOL_ALLOWLIST` 换成新工具名 | ✅ |
+| `lib/pi/bridge.ts` 系统提示词 | 改为「只读的 `xhs_*` 数据源工具」；脱敏句按第 6.4 节收窄到凭据类 | ✅ |
+| `lib/pi/events.ts`、`frontend/components/chat/TurnTrace.tsx` | 工具名换名；`summarizeToolResult` 增加 `details.reason` 文案分支 | ✅ |
+| `xiaohongshu-makeup-advisor-latest/` | 按第 7 节逐条改 | ✅ |
+| `test/L1/xhs-tikhub.test.ts` | 两层信封、计费陷阱（内层失败**不重试**）、映射、分页凭据、图片规范化；fixture 用真实详情响应裁剪（token 全换假值） | ✅ |
+| `test/L1/xhs-source-extension.test.ts` | 三道闸门、配额整批停止、采集侧失败只停详情 | ✅ 由 `xhs-mcp-extension.test.ts` 改名；**Phase D 只删掉 mcp 分支的用例，api 用例全部保留** |
+| `.env.example` / `.env` | 加 `XHS_API_*`；Phase D 删掉 `XHS_MCP_*` | ✅ `.env.example` 里只剩 `XHS_SOURCE_MODE` + `XHS_API_*` |
+| `README.md` | 配置表、命令表、故障排查、结构树全部按 API 链路重写 | ✅ Phase D 完成 |
+| `AGENTS.md` | 补 `lib/xhs/`；改扩展描述；删掉 `xiaohongshu-mcp/` 与 xhs-mcp 脚本条目 | ✅ Phase D 完成 |
+| `docs/xhs-mcp-local.md` | 本地 MCP 部署说明 | ✅ Phase D 整份删除 |
+| `scripts/xhs-*`、`xiaohongshu-mcp/` | 本地服务与二进制（含 `install-xhs-mcp-launch-agent`） | ✅ Phase D 删除，`scripts/` 只剩 `deploy.sh` |
+| `docs/plan/003-technology-selection-and-evolution.md` | 补一段「后来为什么换成 API」 | ✅ |
 
 ## 9. 测试与验收
 
 ### 9.1 L1（`npm run test:l1`）
 
 - `test/L1/xhs-tikhub.test.ts`：两层信封（外层 200 + 内层 `code=0`/`success=true`）；外层 5xx 重试一次、401/403/429 不重试、内层「服务异常」**不重试**（已计费）；真实 fixture 的嵌套形状与白名单（`xsec_token` 不许漏出）；分页凭据；图片取值链与 heif→jpg、http→https。
-- `test/L1/xhs-source-extension.test.ts`（沿用现有 stub-fetch 写法）：
-  - api 模式：未知 noteId **不发上游请求**；预算用尽**不发上游请求**；token 为空**不发上游请求**；返回文本里**不出现 token**。
-  - api 模式：搜索请求**必须带 `note_type=普通笔记`**（决策 11 只值一条断言，但漏了就悄悄退回视频混排）。
-  - mcp 模式：视频笔记拦截、未知 `feed_id` 放行——**原有不变量不能被换源改掉**。
-  - mcp 模式：搜索返回里的 `video` 条目被丢掉、类型未知的条目保留、丢了几条进 `details`（决策 11 在回退链路上的那一半）。
+- `test/L1/xhs-source-extension.test.ts`（沿用 stub-fetch 写法，只测 api 这一条链路）：
+  - 三道闸门：未知 noteId **不发上游请求**；详情预算用尽**不发上游请求**；token 为空三个工具都降级**不发上游请求**；返回文本里**不出现 token**。
+  - 配额码出现即整批停止，后续调用不再发请求；连续两篇空 `data` 后只停详情、搜索照常。
+  - 上游形状读不出内容时，错误信息要带上上游字段名（字段改名不能变成静默的「没有结果」）。
+  - 搜索结果的受控形状：只有截断预览、没有正文，`xsec_token` 不进上下文。
 - 技能改动后，`test/L1/pi-bridge.test.ts` 等涉及提示词/工具名的断言同步更新。
 
 ### 9.2 L3（`RUN_L3_E2E=1`）
@@ -311,34 +312,36 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 3. 答案里**不给可点链接**；整体妆效图能渲染（heif→jpg 生效）。
 4. 取数不可用时答案如实说明样本量与限制，不出现「根据小红书笔记」而无来源的表述。
 5. 记录本轮实际调用次数、**金额（控制台可见时）**与耗时：金额用于回填第 4 节的 `DETAIL_LIMIT`，P95 用于收紧超时与预算。
-6. 一轮端到端耗时与 MCP 链路（实测 2.6 分钟）对比。
+6. ~~一轮端到端耗时与 MCP 链路（实测 2.6 分钟）对比。~~ **基准没了**：MCP 链路已删除，没法再对照跑。要比较只能拿历史值（2.6 分钟）当参考——但那条链路的失败形态与现在不同，这个对比的意义有限。
 
-### 9.3 迁移验收（单独一条）
+### 9.3 迁移验收（已完成）
 
-`XHS_SOURCE_MODE` 在 `mcp`/`api` 之间切换时：**技能、系统提示词、SSE 事件、前端图标都不需要改**。这是决策 2 的目的，也是切默认之前必须证明的事。
+原始要求：`XHS_SOURCE_MODE` 在 `mcp`/`api` 之间切换时，**技能、系统提示词、SSE 事件、前端图标都不需要改**。
 
-## 10. 迁移分期
+这条不变量后来被更硬的一次实证覆盖了：mcp 分支删掉、供应商从 Just One 换成 TikHub 时，改的只有 `lib/xhs/tikhub.ts` 与一份新 SSOT，**技能、提示词、工具名、SSE 事件、前端图标一行没动**。工具名与数据源实现解耦这条已经不只是「切换时不改」，而是「换掉整条链路也不改」。
 
-| 阶段 | 做什么 | 出口条件 |
+## 10. 迁移分期（全部完成，2026-09-24）
+
+| 阶段 | 做什么 | 出口条件 | 结果 |
+| --- | --- | --- | --- |
+| **A 并建** | `lib/xhs/*`、扩展改名与分支、技能改动、L1 测试 | L1 全绿；两种模式都能在本机跑起来 | ✅ |
+| **B 验收** | 真实 token 跑第 9.2 节 | 六条全过；记录调用次数与耗时 | ✅ |
+| **C 切默认** | `XHS_SOURCE_MODE=api` 写进 `.env.example` | 没有出现需要回退的问题 | ✅ |
+| **D 清账** | 删扩展的 mcp 分支、`scripts/xhs-*`、`xiaohongshu-mcp/`、`XHS_MCP_*`、`docs/xhs-mcp-local.md`；更新 README/AGENTS/09-07 头部/003 | 仓库里搜不到 MCP 链路 | ✅ 见第 8 节 |
+
+回退路径已经不存在了，所以**没有「回退到 mcp」这个选项**：出问题要么修 TikHub 链路，要么把 `XHS_SOURCE_MODE` 改成别的值整体停掉取数（链路降级，答案如实说明本轮没有实时站内检索）。
+
+## 11. 对其它文档的改动（已落地）
+
+| 文档 | 改什么 | 结果 |
 | --- | --- | --- |
-| **A 并建** | `lib/xhs/*`、扩展改名与分支、技能改动、L1 测试。`XHS_SOURCE_MODE` 默认仍为 `mcp` | L1 全绿；两种模式都能在本机跑起来 |
-| **B 验收** | 真实 token 跑第 9.2 节 | 六条全过；记录调用次数与耗时 |
-| **C 切默认** | `XHS_SOURCE_MODE=api` 写进 `.env.example`，观察若干轮 | 没有出现需要回退的问题 |
-| **D 清账** | 删扩展的 mcp 分支、`scripts/xhs-*`、`xiaohongshu-mcp/`、`XHS_MCP_*`、`docs/xhs-mcp-local.md`；更新 README/AGENTS/09-07 头部/003 | 仓库里搜不到 MCP 链路 |
-
-Phase D 之前**不要**动 README 的 MCP 章节：回退路径在那之前都是真的。
-
-## 11. 对其它文档的改动（本文的配套修订）
-
-| 文档 | 改什么 |
-| --- | --- |
-| [09-07](./09-07-xhs-mcp-integration.md) | 头部加一行「Superseded：取数链路已被 09-24-xhs-api-integration.md 取代；第 12/13 节作为上游缺陷的实测记录保留」 |
-| [09-24 Just One SSOT](./09-24-justoneapi-xhs-ssot.md) | 头部标注**已作废**（xhs 链路不再使用；淘宝链路仍用 Just One，那份在 09-21） |
-| [09-24 TikHub SSOT](./09-24-tikhub-xhs-ssot.md) | 字段/参数/信封/计费陷阱的唯一来源；搜索响应形状待采样（第 7 节） |
-| [09-22](./09-22-langfuse-observability.md) | 第 99/100、380/381 行的工具名；第 456 行「26KB」标注为 MCP 时代观察值、需重测 |
-| `README.md` | Phase C/D 时改（配置表、命令表、故障排查、结构树） |
-| `AGENTS.md` | 同第 8 节 |
-| `docs/xhs-mcp-local.md` | 头部加迁移期标注 |
+| [09-07](./09-07-xhs-mcp-integration.md) | 头部加 Superseded 行；第 12/13 节作为上游缺陷的实测记录保留 | ✅ 保留，头部已标注 |
+| [09-24 Just One SSOT](./09-24-justoneapi-xhs-ssot.md) | 头部标注**已作废**（xhs 链路不再使用；淘宝链路仍用 Just One，那份在 09-21） | ✅ 保留为换供应商的依据 |
+| [09-24 TikHub SSOT](./09-24-tikhub-xhs-ssot.md) | 字段/参数/信封/计费陷阱的唯一来源 | ✅ |
+| [09-22](./09-22-langfuse-observability.md) | 工具名；「26KB」标注为 MCP 时代观察值、需重测 | ✅ 另加了一行「第 3/12 节的数字属于哪条链路」 |
+| `README.md` | 配置表、命令表、故障排查、结构树全部按 API 链路重写 | ✅ |
+| `AGENTS.md` | 同第 8 节 | ✅ |
+| `docs/xhs-mcp-local.md` | 本地 MCP 部署说明 | ✅ 整份删除 |
 
 ## 12. 未确认
 

@@ -8,7 +8,7 @@ Related specs: [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md)�
 
 本文是「我们怎么调淘宝中转站」的唯一事实来源：接口路径、鉴权、参数、响应字段、错误码、超时和映射规则只在这里定义一次，代码里只允许有**一处**实现（`lib/commerce/taobao.ts`）。其它文档和注释引用本文，不复述字段名——字段写错一次就到处错。
 
-供应商是 **Just One API**，不是淘宝开放平台，也不是 xiaohongshu-mcp 那类浏览器驱动服务。
+供应商是 **Just One API**，不是淘宝开放平台，也不是浏览器驱动/自建采集那类服务（小红书链路曾经用过后者，已删除，见 [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)）。
 
 ## 1. 接入点与鉴权
 

@@ -2,6 +2,7 @@
 
 Status: Implemented（2026-09-22）—— 验证记录见第 12 节
 Date: 2026-09-22
+Revised: 2026-09-24 — 第 3、12 节里的实测数字取自**当时的 MCP 取数链路**（`.pi/extensions/xiaohongshu-mcp.ts`，已随 Phase D 删除；当时的工具名是 `xhs_search_feeds` / `xhs_get_feed_detail`）。**观测契约本身不受影响**（上报规则、字段、脱敏、SSE 的 `durationMs` 都照旧），但那些耗时结论只属于那条链路：现在取数走 TikHub 的 HTTP 接口，没有浏览器、没有登录态、没有串行化的 MCP 调用链，超时那一类瓶颈的形态已经不同。链路见 [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)。
 Related specs: [001-mvp.md](./001-mvp.md) · [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md) · [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md)
 
 ## 0. 文档目的
@@ -455,7 +456,7 @@ V/N 交叉测试（顺序不成变量）；同一篇视频笔记、同一 token�
 
 `xhs_search_notes` 成功时能拿到 20 条笔记，26KB 全文进 trace（超过 SSE 的 2400 字预览上限）——正文完整性这一条也在真实链路上确认了。
 
-> **2026-09-24 注**：这是 MCP 链路（当时叫 `xhs_search_feeds`，原始响应直接透传）的观察值。换成 Just One API 后工具返回的是**受控映射后的形状**，体积量级变小，这个 26KB 与 2400 字预览上限的关系需要重测——见 [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md) 第 6.5 节。
+> **2026-09-24 注**：这是 MCP 链路（当时叫 `xhs_search_feeds`，原始响应直接透传）的观察值。取数换成 API 之后返回的是**受控映射后的形状**，体积量级变小，这个 26KB 与 2400 字预览上限的关系**至今没重测**——结论待补，链路见 [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md) 第 6.5 节。
 
 #### 12.2.3 第二轮（修复后重跑）
 

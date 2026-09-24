@@ -2,7 +2,7 @@
 
 Status: implemented and live-verified
 Date: 2026-09-17
-Related specs: [09-07-xhs-mcp-integration.md](./09-07-xhs-mcp-integration.md)
+Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（取数链路，已取代 09-07 的 MCP 接入设计）
 
 ## 0. 文档目的
 
@@ -40,7 +40,7 @@ buildPiArgs --skill <skillDir>
 ## 4. 验证
 
 - 抓取 Pi 实际发出的模型请求：系统提示词尾部包含 `<available_skills>`，指向 `xiaohongshu-makeup-advisor` 的 `SKILL.md` 绝对路径；工具列表为 `read` + 三个只读 `xhs_*` 工具，写工具与 bash/edit/write 均不可见。
-- 真实模型运行（`deepseek/deepseek-chat`，本地 XHS MCP）：模型先 `read` `SKILL.md`，再读两个 references，然后按技能约定只传 `keyword` 调用 `xhs_search_feeds`；其中一次搜索以 `context deadline exceeded` 失败后，按技能的排障说明继续检索并报告实际样本量，没有循环重试卡住的无头实例。
+- 真实模型运行（`deepseek/deepseek-chat`，当时的取数链路是本地 XHS MCP，工具名当时叫 `xhs_search_feeds`）：模型先 `read` `SKILL.md`，再读两个 references，然后按技能约定只传 `keyword` 调用搜索工具；其中一次搜索以 `context deadline exceeded` 失败后，按技能的排障说明继续检索并报告实际样本量，没有循环重试卡住的无头实例。
 - `test/L1/pi-bridge.test.ts` 固定参数契约：技能路径、`read` 白名单，以及系统提示词不再内联技能规则。
 - `test/L3/pi-skill.e2e.test.ts`（`RUN_L3_E2E=1`）用一个本地 mock 模型端点跑通真实 pi 进程：断言系统提示词包含 `<available_skills>` 与 SKILL.md 绝对路径、工具列表含 `read`，并断言模型读到的正是仓库里的 SKILL.md 和 `references/happy-path.md`。把参数改回旧写法（去掉 `--skill` 和 `read`）时该测试会失败。
 
@@ -50,7 +50,7 @@ buildPiArgs --skill <skillDir>
 - 技能内容变更不需要改 bridge；新增技能用 `PI_SKILL_PATH` 或扩展 `skillPath` 选项接入。
 - **上游缺陷的规避不写在技能里**：技能是行为引导，模型可以忽略；把「上游有缺陷所以别这么调」写进技能，等于把外部服务的 bug 变成了产品行为，而且模型仍可能试探一次、白烧一个超时窗口。
   - 归属原则：**约束跟着有缺陷的那个工具走**。工具适配层（`.pi/extensions/`）能在发出请求之前就挡掉，模型绕不过去，代价为零。
-  - 例子见 [09-07 第 12 节](./09-07-xhs-mcp-integration.md)：视频笔记在 `xhs_get_feed_detail` 里被拦掉，技能文件保持原样。
+  - 例子：视频笔记曾经在工具层的详情调用里被拦掉（MCP 时代的 `xhs_get_feed_detail`，见 [09-07 第 12 节](./09-07-xhs-mcp-integration.md)），技能文件始终没动；换成 API 链路后改成在检索时就限定图文（[09-24 决策 11](./09-24-xhs-api-integration.md)），约束**仍然跟着工具走**，技能照旧不动。
   - 技能只写业务行为：读几篇、输出格式、证据规则、只读边界——由产品决定，改动走正常评审。
 - `PI_CODING_AGENT_DIR` 指向项目内的 `.local-data/pi`，技能通过显式路径加载，不依赖全局技能目录或 `~/.pi`。
 - pi 本身是 `package.json` 的依赖（`@earendil-works/pi-coding-agent`），bridge 默认执行 `node_modules/.bin/pi`；`.pi/extensions/` 里用到的 `typebox` 同样是项目依赖，部署物不依赖任何全局安装。可用 `PI_BIN` 覆盖。

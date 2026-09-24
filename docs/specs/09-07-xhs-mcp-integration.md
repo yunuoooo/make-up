@@ -5,7 +5,7 @@ Date: 2026-09-09
 Related specs: [001-mvp.md](./001-mvp.md)、[09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md)、[09-22-langfuse-observability.md](./09-22-langfuse-observability.md)
 Revised: 2026-09-22 — 第 8 节「原始 MCP 响应默认不写入 Langfuse」的约束作废，现行口径见 [09-22-langfuse-observability.md](./09-22-langfuse-observability.md)
 Revised: 2026-09-23 — 新增第 13 节「搜索被风控拦到安全验证页」；原第 13/14 节顺延为 14/15。
-Superseded: 2026-09-24 — **取数链路已被 [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md) 取代**（改为 Just One API）。第 0–11、14、15 节的接入设计（第零阶段冒烟、MCP 生命周期、浏览器登录、分阶段交付）随之失效；**第 12/13 节作为上游缺陷的实测记录保留**，换源后这两条问题的处置见新 spec 第 13 节对照表。
+Superseded: 2026-09-24 — **取数链路已被 [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md) 取代**（先是 Just One API，现为 TikHub）。本文描述的 MCP 链路、二进制、登录脚本与部署文档**已全部从仓库删除**，没有回退路径；第 0–11、14、15 节的接入设计（第零阶段冒烟、MCP 生命周期、浏览器登录、分阶段交付）随之失效；**第 12/13 节作为上游缺陷的实测记录保留**，换源后这两条问题的处置见新 spec 第 13 节对照表。
 
 ## 0. 文档目的
 
