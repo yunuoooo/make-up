@@ -39,7 +39,7 @@ npm run dev            # http://localhost:3000
 | --- | --- | --- |
 | `XHS_SOURCE_MODE` | `mcp` | `api` / `mcp`；其它值按「没有数据源」降级 |
 | `XHS_API_TOKEN` | 空 | TikHub 的 API Token（请求头 Bearer）。为空即未配置：不发请求，答案会说明本轮没有实时站内检索 |
-| `XHS_API_DETAIL_LIMIT` | `6` | 一轮读几篇正文——**唯一的省钱杠杆**（逐次计费） |
+| `XHS_API_DETAIL_LIMIT` | `10` | 一轮读几篇正文——**唯一的省钱杠杆**（逐次计费，取技能要求的 6–10 篇上界） |
 | `XHS_MCP_URL` | `http://127.0.0.1:18060/mcp` | 本地 MCP 端点（mcp 模式） |
 | `XHS_MCP_AUTH_TOKEN` | 空 | 需要时给本地服务加 Bearer 鉴权 |
 | `XHS_MCP_REQUEST_TIMEOUT_SECONDS` | `45` | 单次工具调用超时 |
@@ -67,6 +67,8 @@ npm run dev            # http://localhost:3000
 | `TAOBAO_CACHE_TTL_SECONDS` | `86400` | 卡片缓存 TTL，缓存是为了不重复烧配额 |
 
 开关与 token 是**「与」**的关系：两个都满足才调用，所以配了 token 也不会自动开始计费。判据从严——只有 `"true"` / `"1"` 算开，没写、写空、写错都按关处理，这个方向的默认值只会少花钱。
+
+**一轮的账单**：一张卡片 = 一次搜索 + 一次详情，一轮默认最多 8 张 = 16 次调用。上游**只有成功（`code=0`）才计费**，失败和重试不花钱。详情走 V8（¥0.2/次，V3 是 ¥0.6/次），搜索 V2 的单价还没核准——一轮大约 ¥5.8，算法与两个还没动的降本杠杆见 [SSOT 第 8 节](./docs/specs/09-21-justoneapi-taobao-ssot.md)。
 
 关掉时整条链路安静降级：不发任何请求（连 `pending` 事件都不发），不出空骨架、假价格、假链接，答案正文里的机器可读块照常剥掉。
 
@@ -99,7 +101,7 @@ npm run dev            # http://localhost:3000
 | 限制 | 说明 |
 | --- | --- |
 | 搜索可能被风控拦 | 登录态被标记后每次搜索必然等满 60s。见 [09-07 第 13 节](./docs/specs/09-07-xhs-mcp-integration.md) |
-| 视频笔记读不了 | 上游 `get_feed_detail` 对视频笔记必然超时，工具层直接拒绝。见 [09-07 第 12 节](./docs/specs/09-07-xhs-mcp-integration.md) |
+| 视频笔记读不了（**仅 mcp 模式**） | 上游 `get_feed_detail` 对视频笔记必然超时，工具层直接拒绝。api 模式没有这个问题，它检索时已限定图文。见 [09-07 第 12 节](./docs/specs/09-07-xhs-mcp-integration.md) |
 | 商品卡片默认关 | 上游按次计费，要用得显式打开 `TAOBAO_CARDS_ENABLED` |
 | 会话有保质期 | 服务端会话保留 30 条、30 天，超出的被清理；过期后追问会从零开始，界面会提示。见 [09-23](./docs/specs/09-23-conversation-sessions.md) |
 | 单实例的会话锁 | 同一会话的并发请求返回 409，锁在进程内；多实例部署需要外部锁 |
