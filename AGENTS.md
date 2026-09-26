@@ -10,7 +10,8 @@
 - `lib/storage/`、`lib/types/`：`.local-data/` 下的 JSON 存储和领域类型。
 - `xiaohongshu-makeup-advisor-latest/`：妆容顾问技能，Agent 的行为来源（`SKILL.md` + `references/`）。
 - `.pi/extensions/`：把小红书数据源注册为 pi 只读工具 `xhs_*` 的扩展。工具名与**数据源实现**解耦（换供应商、换传输都不动工具名，也不动技能与提示词），`XHS_SOURCE_MODE` 现在没有回退分支，只有「api」和「没配好就降级」。
-- `scripts/`：`deploy.sh` 是部署脚本（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启；`DEPLOY_DRY_RUN=1` 先体检）。它是这个目录里唯一的脚本——xhs-mcp 的启动、登录和 launchd 安装脚本已随 MCP 链路一起删除。脚本用 POSIX `sh`，别用 bash 专有语法。
+- `scripts/`：部署相关。`deploy.sh` 是**本机/应急**路径（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启；`DEPLOY_DRY_RUN=1` 先体检），**生产不走它**——生产是 push 到 `main` 触发 CI 构建，服务器只换目录，见 `docs/specs/09-26-cicd-deploy.md`。`deploy-remote.sh` 在服务器上执行换目录/重启/回滚，`bootstrap-server.sh` 是一次性初始化，`preflight.mjs` 是两边共用的 `.env` 校验与扩展自检（**不要各抄一份**），`looktrace.service` 是 systemd 单元。脚本用 POSIX `sh`，别用 bash 专有语法。
+- `.github/workflows/deploy.yml`：push 到 `main` 自动发布。它构建完直接 rsync 产物到服务器，**不经过 `actions/upload-artifact`**（重新打包会丢可执行位和软链，而 `node_modules/.bin/pi` 是软链，丢了要到运行时才炸）。
 - `test/L1/`、`test/L3/`：TypeScript 运行时测试。
 - `docs/specs/`、`docs/plan/`：产品规格和实现方案。`.next/`、`.local-data/` 用于生成文件或本地状态。
 
@@ -26,7 +27,7 @@
 
 ## 运行时依赖边界
 
-部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载。小红书取数走 **TikHub**（`XHS_SOURCE_MODE=api` 且 `XHS_API_TOKEN` 非空才发请求；token 为空或模式是别的值时整条链路降级，不发请求也不伪装成真实来源），token 走请求头 `Authorization: Bearer`、不进 URL。**取数不需要任何二进制**：没有浏览器、没有登录态、没有本地服务。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH` 可覆盖默认值。
+部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载。生产上 `.local-data` 由 `LOOKTRACE_DATA_DIR` + `PI_CODING_AGENT_DIR` 指到发布树外面（`/srv/make-up-shared/.local-data`），这样发版换目录碰不到用户数据；生产发布树的路径 `/srv/make-up` **一个字都不能改**——会话目录名按 cwd 的绝对路径生成，换路径等于所有历史对话静默消失。小红书取数走 **TikHub**（`XHS_SOURCE_MODE=api` 且 `XHS_API_TOKEN` 非空才发请求；token 为空或模式是别的值时整条链路降级，不发请求也不伪装成真实来源），token 走请求头 `Authorization: Bearer`、不进 URL。**取数不需要任何二进制**：没有浏览器、没有登录态、没有本地服务。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH` 可覆盖默认值。
 
 ## 编码风格与命名约定
 

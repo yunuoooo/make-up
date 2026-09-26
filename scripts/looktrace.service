@@ -1,0 +1,42 @@
+# looktrace 的 systemd 单元。由 scripts/bootstrap-server.sh 装到
+# /etc/systemd/system/looktrace.service。
+#
+# 用 system unit 而不是 `systemctl --user`：部署走的是非交互 SSH，user unit 要多依赖
+# 一个 XDG_RUNTIME_DIR；system unit 不依赖登录会话，开机即启。
+#
+# 直接跑 node 而不是 `npm run start`：少一个进程，也避免 npm 自己退出而 next-server
+# 还活着时 unit 显示 inactive、:3000 却被占着的假象——那正是「部署显示成功但还在跑
+# 旧代码」的成因。
+#
+# 故意不写 EnvironmentFile=：systemd 的解析器和 dotenv 不一样（不认 export、引号规则
+# 不同），解析失败会直接起不来。Next 自己会从 WorkingDirectory 读 .env，保持现状最稳。
+
+[Unit]
+Description=looktrace (Next.js production server)
+After=network-online.target
+Wants=network-online.target
+# 必须放 [Unit]；写进 [Service] 只会得到一条 warning 然后不生效。没有这两行，
+# Restart=always 撞上端口冲突会变成 1.6GB 机器上的崩溃循环。
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/srv/make-up
+ExecStart=/usr/bin/node /srv/make-up/node_modules/next/dist/bin/next start -p 3000
+Environment=NODE_ENV=production
+Environment=HOME=/home/admin
+Environment=NEXT_TELEMETRY_DISABLED=1
+# 必须 control-group：npm/sh/node 以及正在跑的 pi 子进程要能被一起收掉，否则换目录时
+# 会有进程活下来，而它的 cwd 会跟着旧目录走。
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
