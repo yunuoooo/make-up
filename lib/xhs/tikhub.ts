@@ -1,3 +1,4 @@
+import { formatTranscript, isFetchableTranscriptUrl, parseSrt, transcriptHost } from "./transcript.ts";
 import type { XhsCallInfo, XhsNoteDetail, XhsNoteStats, XhsNoteSummary, XhsSearchPage } from "./types.ts";
 
 /**
@@ -13,7 +14,10 @@ import type { XhsCallInfo, XhsNoteDetail, XhsNoteStats, XhsNoteSummary, XhsSearc
 
 const DEFAULT_BASE_URL = "https://api.tikhub.io";
 const SEARCH_PATH = "/api/v1/xiaohongshu/app_v2/search_notes";
+/** 图文详情：笔记本体在 `data.data[0].note_list[0]`。 */
 const DETAIL_PATH = "/api/v1/xiaohongshu/app_v2/get_image_note_detail";
+/** 视频详情：笔记本体在 `data.data[0]`，**没有 `note_list` 那一层**（SSOT 第 2.3 节）。 */
+const VIDEO_DETAIL_PATH = "/api/v1/xiaohongshu/app_v2/get_video_note_detail";
 
 /** 正文上限（字符）。SSOT 第 5 节：样例正文 300+ 字，这条只在极端长文时触发。 */
 const TEXT_LIMIT = 8000;
@@ -22,11 +26,29 @@ const IMAGE_LIMIT = 9;
 /** 搜索预览上限。上游卡片自带的是截断预览，这里只是防御性封顶。 */
 const PREVIEW_LIMIT = 120;
 /**
- * 检索固定只取图文笔记。TikHub 的 `note_type` 是**中文枚举**（SSOT 第 2.1 节），
- * 与 Just One 的 `NORMAL_NOTE` 等价。技能的产出要一张能看清妆效的完成妆画面，
- * 而视频笔记在本链路上只有封面——所以让它在服务端就过滤掉。
+ * 字幕上限（字符）。**刻意不复用正文的 `TEXT_LIMIT`**：正文 8000 够用，但十分钟的教程
+ * 字幕会超过它，而字幕被截断的代价比正文大——讲解是连续的，丢了尾巴等于没讲完。
+ * 样本是 418 秒 / 6053 字符（视频理解规格第 5 节）。
  */
-const NOTE_TYPE = "普通笔记";
+const TRANSCRIPT_LIMIT = 20000;
+/**
+ * 取 `.srt` 时带的 UA（SSOT 第 2.3 节：抽样脚本如此，**是否必需未验证**）。
+ * 稳妥照带，别裸请求。
+ */
+const TRANSCRIPT_USER_AGENT = "Mozilla/5.0";
+/** 人声缺失时退到连续值的阈值：`speech_ratio` 低于它按「没有人声」处理。 */
+const SPEECH_RATIO_FLOOR = 0.05;
+/**
+ * 取 `.srt` 的尝试次数。
+ *
+ * **这不违反「计费过就不重试」的纪律**（SSOT 第 4 节）：`.srt` 走 CDN、不经过 TikHub、不计费，
+ * 重试的代价只有时间；而 TikHub 的详情调用响应即计费，一次都不许重试。
+ *
+ * 2026-09-26 实测遇到过一次瞬时 `ECONNRESET`（字幕 CDN 的另一个节点），同一个地址重试即成功。
+ * 不重试的话，一条本来拿得到的字幕会变成 `transcript-failed`，模型只能降级——而**它的替代方案
+ * 是重新打开这条笔记，那要再付一次详情调用的钱**。
+ */
+const TRANSCRIPT_ATTEMPTS = 2;
 
 /** 限流与套餐额度：重试只会继续烧额度，必须整批停下。 */
 export const QUOTA_STATUS_CODES = new Set([429]);
@@ -65,7 +87,13 @@ export type XhsClient = {
   /** 配了 token 才会发请求；为空即「未配置」，调用方据此整条链路降级。 */
   configured: boolean;
   searchNotes(keyword: string, options?: { page?: number; signal?: AbortSignal }): Promise<XhsSearchPage>;
-  getNoteDetail(noteId: string, options?: { signal?: AbortSignal }): Promise<XhsNoteDetail | null>;
+  /**
+   * 读一篇笔记的详情。**两个端点按类型分流，调用前就要定**（视频理解规格第 3.2 节）：
+   * 两个端点的响应形状不同，而每次尝试都计费——不能靠「失败了再试另一个」。
+   *
+   * `noteType` 取自搜索条目（`video` 走视频端点，其余走图文端点）。
+   */
+  getNoteDetail(noteId: string, options?: { noteType?: string; signal?: AbortSignal }): Promise<XhsNoteDetail | null>;
 };
 
 export type XhsClientOptions = {
@@ -259,6 +287,40 @@ function pickDetailEntry(data: unknown): Record<string, unknown> | null {
   return object;
 }
 
+/**
+ * **视频**详情的笔记本体在哪：`data.data[0]`——数组元素**直接就是笔记**，没有 `note_list` 包装。
+ *
+ * ⚠️ 这一层是视频端点最容易踩的地方：真实的视频响应是 `body.data.data[0]`，
+ * 2026-09-26 实调复核过（同一个数组里 `[1]`、`[2]` 是**推荐笔记**，所以必须取 `[0]`）。
+ * SSOT 第 2.3 节曾把它写成 `data.data.data[0]`（多一层 `.data`），**已按实测改正**。
+ *
+ * 与 `pickDetailEntry` 分开写，但**别指望分错会报错**：把视频响应喂给 `pickDetailEntry`
+ * 会走「是数组就取 `[0]`」那条分支，把笔记**碰巧**映射出来（2026-09-26 实测）。分错是静默故障，
+ * 所以分流靠的是**调用前就知道的类型**（`getNoteDetail` 的 `noteType`），不是形状试探。
+ * 形状漂移是这条链路最贵的失败，所以其余形态（多包一层 `.data`、`note_list`、`note` 包装）一并收。
+ */
+function pickVideoDetailEntry(data: unknown): Record<string, unknown> | null {
+  let current: unknown = data;
+  if (typeof current === "string") {
+    try {
+      current = JSON.parse(current);
+    } catch {
+      return null;
+    }
+  }
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+  const wrapper = asRecord(current);
+  if (wrapper) {
+    if (Array.isArray(wrapper.data)) current = wrapper.data;
+    else if (Array.isArray(wrapper.note_list)) current = wrapper.note_list;
+    else if (asRecord(wrapper.note)) return asRecord(wrapper.note);
+  }
+  if (Array.isArray(current)) current = current[0];
+  return asRecord(current);
+}
+
 /** 丢掉一篇笔记时要说清「上游到底回了什么」：只列顶层字段名，不含任何值。 */
 function describeShape(entry: unknown): string {
   if (!entry || typeof entry !== "object") return "响应体不是对象";
@@ -266,22 +328,30 @@ function describeShape(entry: unknown): string {
   return keys.length ? `上游返回的字段：${keys.slice(0, 40).join(", ")}` : "响应体是空对象";
 }
 
-function toDetail(entry: Record<string, unknown>, fallbackNoteId: string): XhsNoteDetail | null {
-  let noteId = "";
+/** 详情缺 id 时用请求参数兜底（Just One 那次线上事故的教训：缺 id 不能丢整篇）。 */
+function noteIdFrom(entry: Record<string, unknown>, fallbackNoteId: string): string {
   for (const key of ["id", "note_id", "noteId"]) {
-    noteId = noteIdOf(entry[key]);
-    if (noteId) break;
+    const noteId = noteIdOf(entry[key]);
+    if (noteId) return noteId;
   }
-  if (!noteId) noteId = fallbackNoteId;
+  return fallbackNoteId;
+}
+
+/** 话题只取 `.name`，其余（id / type / record_count）都是页内状态。 */
+function tagsOf(entry: Record<string, unknown>): string[] {
+  if (!Array.isArray(entry.hash_tag)) return [];
+  return entry.hash_tag
+    .map((tag) => optionalText((tag ?? {})?.name))
+    .filter((name): name is string => Boolean(name));
+}
+
+function toDetail(entry: Record<string, unknown>, fallbackNoteId: string): XhsNoteDetail | null {
+  const noteId = noteIdFrom(entry, fallbackNoteId);
   if (!noteId) return null;
 
   const user = (entry.user ?? {}) as Record<string, unknown>;
   const { text, truncated } = textBody(entry.desc);
-  const tags = Array.isArray(entry.hash_tag)
-    ? entry.hash_tag
-      .map((tag) => optionalText((tag ?? {})?.name))
-      .filter((name): name is string => Boolean(name))
-    : [];
+  const tags = tagsOf(entry);
   const title = oneLine(entry.title);
   const images = imageUrls(entry.images_list);
   // 内容全空才算「这篇没有东西可给」：有标题/正文/话题/图片一律映射出去，绝不因为缺 id 丢整篇。
@@ -301,6 +371,114 @@ function toDetail(entry: Record<string, unknown>, fallbackNoteId: string): XhsNo
   };
 }
 
+/** `video_info_v2` 那棵树：播放地址、字幕、时长、人声都在它下面。 */
+function videoInfo(entry: Record<string, unknown>): Record<string, unknown> {
+  return (entry.video_info_v2 ?? {}) as Record<string, unknown>;
+}
+
+function videoNode(entry: Record<string, unknown>): Record<string, unknown> {
+  const media = (videoInfo(entry).media ?? {}) as Record<string, unknown>;
+  return (media.video ?? {}) as Record<string, unknown>;
+}
+
+/**
+ * 时长**统一成秒**。上游三处口径不一致（SSOT 第 2.3 节）：`capa.duration` 与
+ * `media.video.duration` 是秒、`stream[].duration` 是**毫秒**。这里只认 `media.video.duration`——
+ * 它和字幕、播放地址在同一棵树里，不会三处混用。
+ */
+function videoDurationSeconds(entry: Record<string, unknown>): number | undefined {
+  const seconds = count(videoNode(entry).duration);
+  return seconds > 0 ? seconds : undefined;
+}
+
+/**
+ * 封面帧。视频的 `images_list` 通常就是那一张封面，**这里是它为空时的兜底**，
+ * 顺序按 SSOT 第 8 节：`first_frame` → `thumbnail` → `thumbnail_dim`。
+ */
+function videoFrameUrl(entry: Record<string, unknown>): string | undefined {
+  const image = (videoInfo(entry).image ?? {}) as Record<string, unknown>;
+  return normalizeImageUrl(image.first_frame)
+    ?? normalizeImageUrl(image.thumbnail)
+    ?? normalizeImageUrl(image.thumbnail_dim);
+}
+
+/**
+ * 人声判据。**`hasHumanVoice` 是字符串 `"true"` / `"false"`，不是布尔**
+ * （SSOT 第 2.3 节）——按布尔比会永远不成立，这是本条最容易写错的地方。
+ * 字段缺失时才退到连续值 `speech_ratio`，解析失败按「不知道」处理，不让它把整篇带崩。
+ */
+function hasNoHumanVoice(entry: Record<string, unknown>): boolean {
+  const opaque = (videoNode(entry).opaque1 ?? {}) as Record<string, unknown>;
+  if (opaque.hasHumanVoice === "false") return true;
+  if (opaque.hasHumanVoice !== undefined) return false;
+  let ratio: unknown;
+  try {
+    ratio = (JSON.parse(String(opaque.audioClsInfo ?? "{}")) as Record<string, unknown>).speech_ratio;
+  } catch {
+    return false;
+  }
+  const parsed = typeof ratio === "number" ? ratio : Number(ratio);
+  return Number.isFinite(parsed) && parsed < SPEECH_RATIO_FLOOR;
+}
+
+/**
+ * 语言优先级 **`source` → `zh-CN` → 其余第一个非空的**（SSOT 第 2.3 节）。
+ * `source` 是原始语言轨——中文视频的原始轨就是中文，所以它排第一。
+ * 语言取自 `subtitles` 的**键名**，不是数组项里的 `language` 字段。
+ */
+function pickSubtitleTrack(subtitles: unknown): { lang: string; url: string } | null {
+  const table = (subtitles ?? {}) as Record<string, unknown>;
+  if (!table || typeof table !== "object") return null;
+  for (const lang of ["source", "zh-CN", ...Object.keys(table)]) {
+    const tracks = table[lang];
+    if (!Array.isArray(tracks)) continue;
+    for (const track of tracks) {
+      const url = (track as Record<string, unknown>)?.url;
+      if (typeof url === "string" && url.trim()) return { lang, url: url.trim() };
+    }
+  }
+  return null;
+}
+
+/**
+ * 视频详情 → 内部类型。字段与图文**重合但不保证一致**（SSOT 第 8 节），所以各自一个函数。
+ *
+ * `playUrl` **刻意不映射**：没有消费者，而且它是带签名的 URL——不进工具输出、日志、SSE、trace
+ * （视频理解规格第 4.1 节）。将来真要做画面路线再取。
+ */
+function toVideoDetail(entry: Record<string, unknown>, fallbackNoteId: string): XhsNoteDetail | null {
+  const noteId = noteIdFrom(entry, fallbackNoteId);
+  if (!noteId) return null;
+
+  const user = (entry.user ?? {}) as Record<string, unknown>;
+  const { text, truncated } = textBody(entry.desc);
+  const tags = tagsOf(entry);
+  const title = oneLine(entry.title);
+  const images = imageUrls(entry.images_list);
+  if (images.length === 0) {
+    const frame = videoFrameUrl(entry);
+    if (frame) images.push(frame);
+  }
+  // 与图文同一条判据：内容全空才算「这篇没有东西可给」。
+  if (!title && !text && tags.length === 0 && images.length === 0) return null;
+
+  const durationSeconds = videoDurationSeconds(entry);
+  return {
+    noteId,
+    title,
+    authorName: optionalText(user.nickname ?? user.name),
+    noteType: optionalText(entry.type),
+    postedAt: postedAt(entry.time),
+    ipLocation: optionalText(entry.ip_location),
+    text,
+    tags,
+    stats: statsOf(entry),
+    images,
+    truncated,
+    ...(durationSeconds ? { durationSeconds } : {})
+  };
+}
+
 function errorLabel(error: unknown): string {
   const value = error as { name?: string; message?: string } | null;
   if (value?.name === "TimeoutError") return "请求超时";
@@ -315,6 +493,10 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
   const token = xhsApiToken(env);
   const timeoutSeconds = Number(env.XHS_API_TIMEOUT_SECONDS ?? 60);
   const timeoutMs = Math.max(1, Number.isFinite(timeoutSeconds) ? timeoutSeconds : 60) * 1000;
+  const transcriptSeconds = Number(env.XHS_API_TRANSCRIPT_LIMIT ?? TRANSCRIPT_LIMIT);
+  const transcriptLimit = Number.isFinite(transcriptSeconds) && transcriptSeconds > 0
+    ? Math.floor(transcriptSeconds)
+    : TRANSCRIPT_LIMIT;
   const configured = token.length > 0;
   /** 首屏返回的分页凭据，第二页起带上（有状态分页，SSOT 第 2.1 节）。 */
   let searchId = "";
@@ -418,6 +600,84 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
     }
   }
 
+  /**
+   * 视频的字幕：**先判人声、再取字幕**（视频理解规格第 4.2 节）。
+   *
+   * 三种缺失都是**预期内结果**，不是故障：详情本身是成功的，笔记照样返回，只是口播内容缺了。
+   * 所以这里返回带 `transcriptIssue` 的笔记，而不是抛错。
+   *
+   * `.srt` 走 CDN 不走 TikHub，但照样计入本轮耗时预算——它消耗的是同一个用户等待的时间
+   * （规格第 5 节）。它**不计入调用次数**，因为不计费。
+   */
+  async function attachTranscript(
+    note: XhsNoteDetail,
+    entry: Record<string, unknown>,
+    signal: AbortSignal | undefined
+  ): Promise<XhsNoteDetail> {
+    // 没有人声时**根本不发那次 `.srt` 请求**：省一次网络往返，也避免把「空字幕」和
+    // 「取不到字幕」混成同一个 reason。
+    if (hasNoHumanVoice(entry)) {
+      return { ...note, transcriptIssue: { reason: "no-voice", detail: "上游标记这条视频没有人声" } };
+    }
+    const track = pickSubtitleTrack(videoNode(entry).subtitles);
+    if (!track) {
+      return { ...note, transcriptIssue: { reason: "no-transcript", detail: "响应里没有非空的字幕轨" } };
+    }
+    const url = normalizeUrl(track.url);
+    if (!url || !isFetchableTranscriptUrl(url)) {
+      // 地址来自上游响应，直接 fetch 等于把「取哪个地址」的决定权交给上游——这是 SSRF 面。
+      // 只报 host，**不带签名参数**（签名 URL 不进日志/SSE/trace）。
+      return {
+        ...note,
+        transcriptIssue: {
+          reason: "transcript-failed",
+          detail: `字幕地址不在允许的域名内（${transcriptHost(track.url)}）`
+        }
+      };
+    }
+    const fetched = await fetchTranscript(url, signal);
+    if ("failed" in fetched) {
+      return { ...note, transcriptIssue: { reason: "transcript-failed", detail: fetched.failed } };
+    }
+    const parsed = parseSrt(fetched.text);
+    if ("failed" in parsed) {
+      return { ...note, transcriptIssue: { reason: "transcript-failed", detail: `字幕解析失败：${parsed.failed}` } };
+    }
+    return { ...note, transcript: { lang: track.lang, ...formatTranscript(parsed.cues, transcriptLimit) } };
+  }
+
+  /**
+   * 取一次 `.srt`。**只对连接层的即时失败重试一次**：
+   * - 超时**不**重试——重试会把等待翻倍，而本轮预算只有 60 秒；
+   * - HTTP 错误码**不**重试——签名错了重试还是错（`403` 不会自己好）。
+   *
+   * 超时信号按**每次尝试**新建：`AbortSignal.timeout` 是一次性的，复用会让第二次立刻失败。
+   */
+  async function fetchTranscript(
+    url: string,
+    signal: AbortSignal | undefined
+  ): Promise<{ text: string } | { failed: string }> {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= TRANSCRIPT_ATTEMPTS; attempt += 1) {
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const composed = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      try {
+        const response = await fetchImpl(url, {
+          method: "GET",
+          headers: { "user-agent": TRANSCRIPT_USER_AGENT },
+          signal: composed
+        });
+        if (!response.ok) return { failed: `字幕下载失败（HTTP ${response.status}）` };
+        return { text: await response.text() };
+      } catch (error) {
+        lastError = error;
+        const name = (error as { name?: string } | null)?.name;
+        if (signal?.aborted || name === "TimeoutError" || name === "AbortError") break;
+      }
+    }
+    return { failed: `字幕下载失败（${errorLabel(lastError)}）` };
+  }
+
   return {
     configured,
 
@@ -425,11 +685,12 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
       if (!configured) return { notes: [], hasMore: false, page: searchOptions.page ?? 1 };
       const page = searchOptions.page ?? 1;
       // 有状态分页：首屏只传 keyword + page，第二页起带上首屏给的凭据（SSOT 第 2.1 节）。
+      // **不传 `note_type`**：它的默认值就是「不限」，图文与视频一起返回（视频理解规格第 3.1 节）。
+      // 不传比显式传中文字面量更不容易抄错，要单独验证视频端点时再从外面加。
       const data = await call(SEARCH_PATH, {
         keyword,
         page: String(page),
         sort_type: "general",
-        note_type: NOTE_TYPE,
         ...(page > 1 && searchId ? { search_id: searchId } : {}),
         ...(page > 1 && searchSessionId ? { search_session_id: searchSessionId } : {})
       }, searchOptions.signal, { endpoint: "search", keyword });
@@ -447,9 +708,8 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
         if (!summary) continue;
         mapped += 1;
         if (seen.has(summary.noteId)) continue;
-        // 服务端已经按 note_type=普通笔记 过滤过；这里再挡一次明确的 video，
-        // 是因为「上游忽略参数」这件事在本链路里已经发生过一次（Just One 的空 data）。
-        if (summary.noteType === "video") continue;
+        // 视频条目**要留下**，它的 `noteType` 就是详情阶段分流到哪个端点的依据
+        // （视频理解规格第 3.2 节）。这里曾经把 video 挡掉，挡的正是现在要的东西。
         seen.add(summary.noteId);
         notes.push(summary);
       }
@@ -470,11 +730,19 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
 
     async getNoteDetail(noteId, detailOptions = {}) {
       if (!configured || !noteId) return null;
-      const data = await call(DETAIL_PATH, { note_id: noteId }, detailOptions.signal, { endpoint: "detail", noteId });
-      const entry = pickDetailEntry(data.data);
+      // 分流必须在**调用前**定：两个端点的响应形状不同，而每次尝试都计费，
+      // 所以不存在「先试一个、失败了再试另一个」这种退路（SSOT 第 2.2 节）。
+      const isVideo = detailOptions.noteType === "video";
+      const data = await call(
+        isVideo ? VIDEO_DETAIL_PATH : DETAIL_PATH,
+        { note_id: noteId },
+        detailOptions.signal,
+        { endpoint: "detail", noteId }
+      );
+      const entry = isVideo ? pickVideoDetailEntry(data.data) : pickDetailEntry(data.data);
       // 空业务数据：这篇确实没内容（供应商明示：这种响应也计费）。
       if (!entry) return null;
-      const note = toDetail(entry, noteId);
+      const note = isVideo ? toVideoDetail(entry, noteId) : toDetail(entry, noteId);
       if (!note) {
         // 有数据但读不出内容 = 上游形状变了。带上字段名，别让下一次排查从头再走一遍。
         throw new XhsApiError(`详情响应里没有可用的正文/标题/图片（${describeShape(entry)}）`, {
@@ -482,7 +750,8 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
           retryable: false
         });
       }
-      return note;
+      if (!isVideo) return note;
+      return attachTranscript(note, entry, detailOptions.signal);
     }
   };
 }

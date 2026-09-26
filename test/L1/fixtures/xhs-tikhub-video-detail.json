@@ -1,0 +1,734 @@
+{
+ "_note": "**真实响应**（2026-09-26 实调 get_video_note_detail）：形状是 body.data.data[0]——数组元素**直接就是笔记**，没有 note_list 那一层（这正是与图文端点差的那一层，SSOT 第 2.3 节）。同一个数组里 [1]、[2] 是推荐笔记，这里只留身份字段，用来证明映射层取的是 [0] 而不是碰巧读到了别的。签名与 token 已换假值（sign=FAKESIGN",
+ "code": 200,
+ "request_id": "req-fixture-video-0001",
+ "message": "Request successful. This request will incur a charge.",
+ "message_zh": "请求成功，本次请求将被计费。",
+ "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+ "time": "2026-09-26 06:44:01",
+ "time_stamp": 1790430241,
+ "time_zone": "America/Los_Angeles",
+ "docs": "https://api.tikhub.io/#/Xiaohongshu-App-V2-API/get_video_note_detail_api_v1_xiaohongshu_app_v2_get_video_note_detail_get",
+ "router": "/api/v1/xiaohongshu/app_v2/get_video_note_detail",
+ "params": {
+  "note_id": "69d24918000000001a023887"
+ },
+ "data": {
+  "code": 0,
+  "success": true,
+  "data": [
+   {
+    "ip_location": "Henan",
+    "user": {
+     "red_official_verified": false,
+     "id": "6344b525000000001802a3b5",
+     "fstatus": "none",
+     "userid": "6344b525000000001802a3b5",
+     "show_red_official_verify_icon": false,
+     "red_official_verify_type": 0,
+     "track_duration": 0,
+     "level": {
+      "image": ""
+     },
+     "image": "https://sns-avatar-qc.rednotecdn.com/avatar/1040g2jo3151ojikg1c0g5oq4mkim58tlc5469bg?imageView2/2/w/80/format/jpg",
+     "followed": false,
+     "red_id": "hym09028",
+     "nickname": "魚yomio.",
+     "name": "魚yomio.",
+     "preload_posted": false
+    },
+    "liked": false,
+    "pre_view_count": -1,
+    "id": "69d24918000000001a023887",
+    "comments_count": 287,
+    "has_related_goods": false,
+    "collected": false,
+    "feedback_info": {
+     "dislike_status": 0
+    },
+    "foot_tags": [],
+    "last_update_time": 1775810661,
+    "auto_slide_down": 0,
+    "share_code_flag": 0,
+    "lazy_load_mode": 0,
+    "related_goods_num": 0,
+    "regenerate_bit_map": 0,
+    "liked_count": 76030,
+    "title": "巨详细全妆跟练｜普通女生速学猫塑亚裔妆～",
+    "share_info": {
+     "content": "#没事儿也化妆  #变妆看我的  #新手化妆教程  #方圆脸  #新手化妆步骤  #妆容教程  #妆教  #亚裔妆 #R",
+     "show_wechat_tag": false,
+     "title": "巨详细全妆跟练｜普通女生速学猫塑亚裔妆",
+     "image": "http://sns-img-qc.xhscdn.com/1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg?imageView2/2/w/360/format/jpg/q/75",
+     "link": "https://www.xiaohongshu.com/discovery/item/69d24918000000001a023887?app_platform=ios&app_version=9.28.1&share_from_user_hidden=true&xsec_source=TEST_SOURCE&type=video&xsec_token=TEST_TOKEN&author_share=1",
+     "function_entries": [
+      {
+       "type": "video_download"
+      },
+      {
+       "type": "generate_image"
+      },
+      {
+       "type": "quote_note"
+      },
+      {
+       "type": "copy_link"
+      },
+      {
+       "type": "heat_for_author"
+      },
+      {
+       "type": "small_window"
+      },
+      {
+       "type": "play_setting",
+       "options": [
+        "auto_small_window",
+        "video_mute_play"
+       ]
+      },
+      {
+       "type": "video_speed"
+      },
+      {
+       "type": "dislike"
+      },
+      {
+       "type": "report"
+      },
+      {
+       "type": "video_feedback"
+      }
+     ],
+     "guide_audited": true,
+     "wechat_share_desc": "@魚yomio.'s note\n3839 Shares",
+     "is_star": false,
+     "block_private_msg": false
+    },
+    "sticky": false,
+    "seeded_count": 0,
+    "need_next_step": false,
+    "content_trans_info": {
+     "strategy": 9
+    },
+    "hash_tag": [
+     {
+      "indicator": "",
+      "record_count": 0,
+      "id": "65d860ef00000000020199ac",
+      "tag_hint": "",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/immersive?id=65d860f06b8c770001af9106&page_source=note_feed.click_new_big",
+      "type": "topic",
+      "record_unit": "",
+      "current_score": 0,
+      "name": "没事儿也化妆"
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "tag_hint": "",
+      "id": "6729fbdc000000002000323a",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/immersive?id=6729fbdcf6fc550001549f7b&page_source=note_feed.click_new_big",
+      "record_unit": "",
+      "type": "topic",
+      "current_score": 0,
+      "name": "变妆看我的"
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "tag_hint": "",
+      "id": "5c9338f9000000000f036da2",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=5c9338f9ab52950001c30bd2&page_source=note_feed.click_new_big",
+      "type": "topic",
+      "record_unit": "",
+      "current_score": 0,
+      "name": "新手化妆教程"
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "id": "5e4fe4b60000000001008c10",
+      "tag_hint": "",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=5e4fe4b60c88ff00016ffaac&page_source=note_feed.click_new_big",
+      "type": "topic",
+      "record_unit": "",
+      "current_score": 0,
+      "name": "方圆脸"
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "id": "5bed67d85b78d4000137468f",
+      "tag_hint": "",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=5bed67d8157eae0001ea7e1f&page_source=note_feed.click_new_big",
+      "record_unit": "",
+      "type": "topic",
+      "name": "新手化妆步骤",
+      "current_score": 0
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "id": "5c89173a000000000d015dbd",
+      "tag_hint": "",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=5c89173a6f5cb800010e52d0&page_source=note_feed.click_new_big",
+      "record_unit": "",
+      "type": "topic",
+      "name": "妆容教程",
+      "current_score": 0
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "tag_hint": "",
+      "id": "5c32e960000000000802bff4",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=5c32e96033f8780001bd4e4d&page_source=note_feed.click_new_big",
+      "type": "topic",
+      "record_unit": "",
+      "name": "妆教",
+      "current_score": 0
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "tag_hint": "",
+      "id": "5edf41d40000000001005ada",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=5edf41d4966c450001a069d3&page_source=note_feed.click_new_big",
+      "type": "topic",
+      "record_unit": "",
+      "current_score": 0,
+      "name": "亚裔妆"
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "id": "69b959dc000000000402bd1f",
+      "tag_hint": "",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/immersive?id=69b9f9990082000000000001&page_source=note_feed.click_new_big",
+      "record_unit": "",
+      "type": "topic",
+      "name": "RED新生代创作大赛",
+      "current_score": 0
+     },
+     {
+      "indicator": "",
+      "record_count": 0,
+      "tag_hint": "",
+      "id": "69b965c00000000001033dfb",
+      "bizId": "",
+      "record_emoji": "",
+      "link": "xhsdiscover://rn/sns-discover/topic/normal?id=69b965c0001c000000000003&page_source=note_feed.click_new_big",
+      "record_unit": "",
+      "type": "topic",
+      "name": "不被定义单元",
+      "current_score": 0
+     }
+    ],
+    "video_info_v2": {
+     "capa": {
+      "is_user_select": false,
+      "is_upload": false,
+      "frame_ts": 0,
+      "duration": 166
+     },
+     "consumer": {
+      "can_super_resolution": false
+     },
+     "image": {
+      "thumbnail": "https://sns-i27.rednotecdn.com/frame/110/0/01e9d24917520a8f0010000000019d5d6e4305_0.webp?imageView2/2/w/5000/h/5000/format/webp/q/90&ap=1&sc=V_ORG&sign=FAKESIGN&t=FAKE",
+      "thumbnail_dim": "https://sns-i27.rednotecdn.com/frame/110/0/01e9d24917520a8f0010000000019d5d6e4305_0.webp?imageView2/2/w/720/h/720/format/webp&ap=1&sc=V_SPRT&sign=FAKESIGN&t=FAKE",
+      "first_frame": "https://sns-i27.rednotecdn.com/110/0/01e9d24917520a8f0010000000019d5d6d8d6a_0.jpg?imageView2/2/w/1080/format/jpg&ap=1&sc=V_FRM&sign=FAKESIGN&t=FAKE"
+     },
+     "media": {
+      "user_level": 0,
+      "audio_stream": {},
+      "video": {
+       "drm_type": 0,
+       "bbox": {
+        "ocr_v3": [
+         {
+          "y": 205,
+          "w": 665,
+          "x": 138,
+          "h": 1411
+         }
+        ],
+        "ocr_v4": [
+         {
+          "y": 0,
+          "w": 0,
+          "x": 0,
+          "h": 0
+         }
+        ],
+        "ocr_v5": [
+         {
+          "y": 0,
+          "w": 0,
+          "x": 0,
+          "h": 0
+         }
+        ],
+        "ocr_v2": [
+         {
+          "y": 205,
+          "w": 771,
+          "x": 138,
+          "h": 1411
+         }
+        ]
+       },
+       "subtitles": {
+        "en-US": [
+         {
+          "language": "en-US",
+          "url": "https://sns-subtitle-s8.rednotecdn.com/subtitle/1/110/1/01e9d24917520a8f010370039d5d6db963_12.srt?sign=FAKESIGN&t=FAKE",
+          "type": 0,
+          "format": 0
+         }
+        ],
+        "zh-CN": [
+         {
+          "language": "zh-CN",
+          "url": "https://sns-subtitle-s8.rednotecdn.com/subtitle/1/110/1/01e9d24917520a8f010370039d5d6db4a2_11.srt?sign=FAKESIGN&t=FAKE",
+          "type": 0,
+          "format": 0
+         }
+        ],
+        "source": [
+         {
+          "language": "zh-CN",
+          "url": "https://sns-subtitle-s8.rednotecdn.com/subtitle/1/110/1/01e9d24917520a8f010370039d5d6db379_1.srt?sign=FAKESIGN&t=FAKE",
+          "type": 0,
+          "format": 0
+         }
+        ]
+       },
+       "biz_id": "281987663071426695",
+       "width": 1080,
+       "opaque1": {
+        "loudnorm": "{\"lra\":6.1,\"htp\":0.07,\"hldn\":-7.77,\"ldn\":-11.17,\"thr\":-22.03}",
+        "hasHumanVoice": "true",
+        "audioClsInfo": "{\"music_ratio\":0.6988988465076187,\"freesound_ratio\":0.10211203982121643,\"speech_ratio\":0.8303146950459431}",
+        "rightAvgLuma": "104",
+        "domestic": "0",
+        "audioLevInfo": "{\"audio_quality_level\":\"E\",\"mos_overall\":3.8091,\"version\":\"3.0\"}",
+        "bottomAvgLuma": "96",
+        "videoLanguage": "[\"zh-CN\"]",
+        "insertSubtitleLanguages": "[\"zh-CN\"]",
+        "isSupportSubtitle": "true",
+        "amend_mobile": "40",
+        "topAvgLuma": "83"
+       },
+       "hdr_type": 0,
+       "biz_name": 110,
+       "height": 1920,
+       "duration": 167,
+       "md5": "2c2becd6fff74320ad52b84ce2eab0f1",
+       "stream_types": [
+        258,
+        178,
+        179,
+        180
+       ],
+       "bound": [
+        {
+         "y": 0,
+         "w": 0,
+         "x": 0,
+         "h": 0
+        }
+       ]
+      },
+      "stream": {
+       "h265": [
+        {
+         "audio_bitrate": 64006,
+         "stream_type": 178,
+         "master_url": "http://sns-v28.rednotecdn.com/stream/1/110/178/01e9d24917520a8f010370019d5da32f8d_178.mp4",
+         "weight": 62,
+         "volume": 0,
+         "video_duration": 166200,
+         "duration": 166207,
+         "vmaf": -1,
+         "psnr": 40.555999755859375,
+         "video_codec": "hevc",
+         "audio_channels": 2,
+         "default_stream": 1,
+         "backup_urls": [
+          "http://sns-v11.rednotecdn.com/stream/1/110/178/01e9d24917520a8f010370019d5da32f8d_178.mp4",
+          "http://sns-v27.rednotecdn.com/stream/1/110/178/01e9d24917520a8f010370019d5da32f8d_178.mp4"
+         ],
+         "video_bitrate": 607043,
+         "fps": 60,
+         "opaque1": {
+          "didLoudnorm": "false",
+          "encode_stream": "0",
+          "pcdn_302_flag": "false",
+          "use_pcdn": "0",
+          "pcdn_supplier": ""
+         },
+         "size": 14123682,
+         "audio_codec": "aac",
+         "rotate": 0,
+         "format": "mp4",
+         "sr": 0,
+         "stream_desc": "R265_MP4_720P_178_IOS",
+         "height": 1280,
+         "width": 720,
+         "audio_duration": 166206,
+         "quality_type": "HD",
+         "avg_bitrate": 679811,
+         "hdr_type": 0,
+         "ssim": 0
+        },
+        {
+         "audio_bitrate": 64006,
+         "stream_type": 179,
+         "master_url": "http://sns-v28.rednotecdn.com/stream/1/110/179/01e9d24917520a8f010370019d5da9fed4_179.mp4",
+         "weight": 73,
+         "volume": 0,
+         "video_duration": 166200,
+         "duration": 166207,
+         "vmaf": -1,
+         "psnr": 41.54899978637695,
+         "video_codec": "hevc",
+         "audio_channels": 2,
+         "default_stream": 0,
+         "backup_urls": [
+          "http://sns-v11.rednotecdn.com/stream/1/110/179/01e9d24917520a8f010370019d5da9fed4_179.mp4",
+          "http://sns-v27.rednotecdn.com/stream/1/110/179/01e9d24917520a8f010370019d5da9fed4_179.mp4"
+         ],
+         "video_bitrate": 992190,
+         "fps": 60,
+         "opaque1": {
+          "didLoudnorm": "false",
+          "encode_stream": "0",
+          "pcdn_302_flag": "false",
+          "use_pcdn": "0",
+          "pcdn_supplier": ""
+         },
+         "size": 22125114,
+         "audio_codec": "aac",
+         "rotate": 0,
+         "format": "mp4",
+         "sr": 0,
+         "stream_desc": "R265_MP4_1080P_179_IOS_mid",
+         "height": 1920,
+         "width": 1080,
+         "audio_duration": 166206,
+         "quality_type": "FHD",
+         "avg_bitrate": 1064942,
+         "hdr_type": 0,
+         "ssim": 0
+        },
+        {
+         "audio_bitrate": 64006,
+         "stream_type": 180,
+         "master_url": "http://sns-v28.rednotecdn.com/stream/1/110/180/01e9d24917520a8f010370019d5db67bf8_180.mp4",
+         "weight": 78,
+         "volume": 0,
+         "video_duration": 166200,
+         "duration": 166207,
+         "vmaf": -1,
+         "psnr": 43.43000030517578,
+         "video_codec": "hevc",
+         "audio_channels": 2,
+         "default_stream": 0,
+         "backup_urls": [
+          "http://sns-v11.rednotecdn.com/stream/1/110/180/01e9d24917520a8f010370019d5db67bf8_180.mp4",
+          "http://sns-v27.rednotecdn.com/stream/1/110/180/01e9d24917520a8f010370019d5db67bf8_180.mp4"
+         ],
+         "video_bitrate": 1664931,
+         "fps": 60,
+         "opaque1": {
+          "didLoudnorm": "false",
+          "encode_stream": "0",
+          "pcdn_302_flag": "false",
+          "use_pcdn": "0",
+          "pcdn_supplier": ""
+         },
+         "size": 36101321,
+         "audio_codec": "aac",
+         "rotate": 0,
+         "format": "mp4",
+         "sr": 0,
+         "stream_desc": "R265_MP4_1080P_180_IOS_high",
+         "height": 1920,
+         "width": 1080,
+         "audio_duration": 166206,
+         "quality_type": "FHD",
+         "avg_bitrate": 1737655,
+         "hdr_type": 0,
+         "ssim": 0
+        }
+       ],
+       "h266": [],
+       "h264": [
+        {
+         "audio_bitrate": 56057,
+         "stream_type": 258,
+         "master_url": "http://sns-v28.rednotecdn.com/stream/1/110/258/01e9d24917520a8f010370019d5d6ec6f5_258.mp4",
+         "weight": 59,
+         "volume": 0,
+         "video_duration": 166233,
+         "duration": 166234,
+         "vmaf": -1,
+         "psnr": 0,
+         "video_codec": "h264",
+         "audio_channels": 2,
+         "default_stream": 0,
+         "backup_urls": [
+          "http://sns-v11.rednotecdn.com/stream/1/110/258/01e9d24917520a8f010370019d5d6ec6f5_258.mp4",
+          "http://sns-v27.rednotecdn.com/stream/1/110/258/01e9d24917520a8f010370019d5d6ec6f5_258.mp4"
+         ],
+         "video_bitrate": 1908900,
+         "fps": 30,
+         "opaque1": {
+          "didLoudnorm": "false",
+          "encode_stream": "0",
+          "pcdn_302_flag": "false",
+          "use_pcdn": "0",
+          "pcdn_supplier": ""
+         },
+         "size": 40968363,
+         "audio_codec": "aac",
+         "rotate": 0,
+         "format": "mp4",
+         "sr": 0,
+         "stream_desc": "X264_MP4",
+         "height": 1280,
+         "width": 720,
+         "audio_duration": 166206,
+         "quality_type": "HD",
+         "avg_bitrate": 1971599,
+         "hdr_type": 0,
+         "ssim": 0
+        }
+       ],
+       "av1": []
+      },
+      "video_id": "137872474977208975"
+     }
+    },
+    "text_language_code": "zh-Hans",
+    "type": "video",
+    "topics": [
+     {
+      "style": 0,
+      "id": "65d860ef00000000020199ac",
+      "activity_online": false,
+      "image": "http://ci.xiaohongshu.com/fd75707a-37f8-45ad-b7a7-0feaf36e9cad@r_120w_120h.jpg",
+      "link": "xhsdiscover://topic/v2/65d860f06b8c770001af9106?page_source=note_feed.click_new_big",
+      "business_type": 0,
+      "discuss_num": 0,
+      "name": "没事儿也化妆"
+     }
+    ],
+    "desc": "巨详细全妆跟练｜普通女生速学猫塑亚裔妆～\n#没事儿也化妆[话题]# #变妆看我的[话题]# #新手化妆教程[话题]# #方圆脸[话题]# #新手化妆步骤[话题]# #妆容教程[话题]# #妆教[话题]# #亚裔妆[话题]##RED新生代创作大赛[话题]# #不被定义单元[话题]#",
+    "countdown": 0,
+    "ats": [],
+    "has_no_more": false,
+    "widgets_groups": [
+     [
+      "guos_test",
+      "note_next_step",
+      "second_jump_bar",
+      "note_collection",
+      "cooperate_binds",
+      "rec_next_infos",
+      "video_marks",
+      "product_review",
+      "related_search",
+      "video_goods_cards",
+      "cooperate_comment_component",
+      "ads_goods_cards",
+      "ads_comment_component",
+      "goods_card_v2",
+      "video_recommend_tag",
+      "buyable_goods_card_v2",
+      "cooperate_search_component",
+      "ads_engage_bar",
+      "challenge_card",
+      "cooperate_engage_bar",
+      "pgy_comment_component",
+      "pgy_engage_bar",
+      "related_recommend",
+      "next_note_guide",
+      "widgets_ndb",
+      "pgy_bbc_exp",
+      "brand_max_trailer",
+      "super_activity",
+      "note_nice_guide",
+      "pin_search_highlights",
+      "widgets_enhance",
+      "packed_goods",
+      "packed_buyable_goods",
+      "widgets_ncb",
+      "note_nice_compound",
+      "live_shooting_flag",
+      "widgets_nbb",
+      "poi_declare",
+      "async_group"
+     ],
+     [
+      "guos_test",
+      "vote_stickers",
+      "bullet_comment_lead",
+      "note_search_box",
+      "interact_pk",
+      "interact_vote",
+      "guide_heuristic",
+      "guide_post",
+      "video_foot_bar",
+      "follow_guide",
+      "share_to_msg",
+      "note_share_prompt_v1",
+      "note_share_prompt_v2",
+      "group_share",
+      "share_guide_bubble",
+      "goods_enhance_component",
+      "guide_navigator",
+      "sync_group"
+     ]
+    ],
+    "enable_brand_lottery": false,
+    "api_upgrade": -1,
+    "need_product_review": false,
+    "media_save_config": {
+     "disable_save": false,
+     "disable_weibo_cover": false,
+     "disable_watermark": false
+    },
+    "cny_red_envelope_note": false,
+    "native_voice_info": {
+     "disable_panel": true,
+     "sound_id": "1146678791525509173",
+     "url": "http://sns-v27.rednotecdn.com/audio/1/02e9d249197d108e010370039d5d6dabd3_0.m4a?sign=FAKESIGN&t=FAKE",
+     "use_count": 1,
+     "deeplink": "xhsdiscover://post_new_note?guiders=%5B%7B%22page_position%22%3A%22album%22%2C%22content%22%3A%22Select%20and%20tap%20Next%20Step%20to%20add%20the%20music%22%7D%2C%7B%22page_position%22%3A%22take_photo%22%2C%22content%22%3A%22Ready%20to%20add%20the%20music%20in%20your%20notes%22%7D%2C%7B%22page_position%22%3A%22take_video%22%2C%22content%22%3A%22Ready%20to%20add%20the%20music%20in%20your%20notes%22%7D%5D&page=%7B%22page_type%22%3A%22albums%22%7D&attach=%7B%22sound_track%22%3A%7B%22id%22%3A%221146678791525509173%22%7D%7D&source=%7B%22type%22%3A%22leica%22%2C%22extraInfo%22%3A%7B%22track_id%22%3A%2269d24918000000001a023887%22%2C%22style%22%3A%22ordinary%22%2C%22subType%22%3A%22NNS_TYPE_SOUND_TRACK%22%2C%22page_entrance_type%22%3A%22note_detail%22%2C%22note_feed_type_str%22%3A%22%22%2C%22nns_id%22%3A%221146678791525509173%22%2C%22is_related_notes%22%3Atrue%7D%7D"
+    },
+    "shared_count": 3839,
+    "images_list": [
+     {
+      "fileid": "1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg",
+      "url_size_large": "",
+      "index": 0,
+      "scale_to_large": 0,
+      "width": 1308,
+      "original": "https://sns-i27.rednotecdn.com/1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg?imageView2/2/w/5000/h/5000/format/webp/q/90&ap=1&sc=V_ORG&sign=FAKESIGN&t=FAKE",
+      "url": "https://sns-i27.rednotecdn.com/1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg?imageView2/2/w/576/format/webp/q/87%7CimageMogr2/strip&redImage/frame/0&ap=1&sc=V_PRV&sign=FAKESIGN&t=FAKE",
+      "longitude": 0,
+      "latitude": 0,
+      "need_load_original_image": false,
+      "height": 1748,
+      "trace_id": "1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg"
+     }
+    ],
+    "comment_prompt_config": {
+     "placeholder_short": "Say something",
+     "placeholder_long": "Drop a comment...",
+     "forbidden_cmt_type": 0
+    },
+    "may_have_red_packet": false,
+    "final_feed_item": false,
+    "enable_fls_bridge_cards": false,
+    "model_type": "note",
+    "hide_button": false,
+    "seeded": false,
+    "enable_listen_video": false,
+    "cooperate_binds": [],
+    "view_count": 0,
+    "track_id": "",
+    "function_switch": [
+     {
+      "enable": false,
+      "type": "video_download",
+      "reason": "Download disabled by author"
+     },
+     {
+      "type": "quote_note",
+      "enable": true
+     },
+     {
+      "type": "heat_for_author",
+      "enable": true
+     }
+    ],
+    "source_item": false,
+    "source_note": true,
+    "time": 1775388952,
+    "nice_info": {
+     "display": true,
+     "nice_status": 2
+    },
+    "cursor_score": "",
+    "collected_count": 49306,
+    "downgrade_type": 0,
+    "interaction_info": {
+     "niced": false,
+     "nice_count": 97,
+     "share_count": 3839
+    },
+    "enable_fls_related_cards": false,
+    "privacy": {
+     "type": 0,
+     "show_tips": false,
+     "nick_names": ""
+    },
+    "qq_mini_program_info": {
+     "share_title": "@魚yomio. 发了一篇超赞的笔记，快点来看！",
+     "webpage_url": "https://www.xiaohongshu.com/discovery/item/69d24918000000001a023887?xsec_source=TEST_SOURCE&xsec_token=TEST_TOKEN",
+     "thumb": "http://sns-img-qc.xhscdn.com/1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg?imageView2/2/w/540/format/jpg/q/75",
+     "title": "@魚yomio. 发了一篇超赞的笔记，快点来看！",
+     "user_name": "gh_66c53d495417",
+     "path": "pages/main/note/index?xsec_source=TEST_SOURCE&id=69d24918000000001a023887&type=video&xsec_token=TEST_TOKEN",
+     "desc": "#没事儿也化妆  #变妆看我的  #新手化妆教程  #方圆脸  #新手化妆步骤  #妆容教程  #妆教  #亚裔妆 #R"
+    },
+    "widgets_context": "{\"video\":true,\"origin_video_key\":\"1040g00g31uj1i0nvia705oq4mkim58tl9ghaqeg\",\"flags\":{\"sound_track\":true},\"author_id\":\"6344b525000000001802a3b5\",\"author_name\":\"魚yomio.\",\"note_sound_info\":{\"sound_id\":\"1146678791525509173\",\"name\":\"魚yomio.的原声\",\"desc\":\"@魚yomio.创作的原声\",\"duration\":166207,\"url\":\"http://sns-v27.rednotecdn.com/audio/1/02e9d249197d108e010370039d5d6dabd3_0.m4a?sign=FAKESIGN&t=FAKE\",\"use_count\":1,\"subtitle\":\"魚yomio.的原声\",\"sound_bg_music_type\":3,\"cover\":\"https://thirdwx.qlogo.cn/mmopen/vi_32/I2w03bzYKzSiallibRf6s9dLftugWFvAKsveHN3zNSHseSeHkKC2wv4XZCxl0UicibiarnQic0XeyE8TopUvVOPtqbNPCEuJknAS55MJJGFFEVfBQ/132\",\"creator\":\"6344b525000000001802a3b5\",\"user_nickname\":\"魚yomio.\"},\"video_duration\":166,\"video_rec_bar_info\":\"\",\"share_count\":3839}"
+   },
+   {
+    "id": "6aa84198000000002700bdc3",
+    "title": "高精力人群出门belike：",
+    "type": "video",
+    "desc": "高精力人群出门belike：\n#没事儿也化妆[话题]# #化妆就是玩儿[话题]#",
+    "liked_count": 42395,
+    "user": {
+     "nickname": "麻里林"
+    }
+   },
+   {
+    "id": "6aa6782000000000120018a2",
+    "title": "沉浸体验化妆师高强度的一天Vlog",
+    "type": "video",
+    "desc": "沉浸体验化妆师高强度的一天Vlog\n#化妆师[话题]# #化妆师工作日常[话题]# #普通人化妆前后[话题]# #妆容分享[话题]# #沉浸式变美[话题]#",
+    "liked_count": 2740,
+    "user": {
+     "nickname": "化妆师京酱（招化妆师）"
+    }
+   }
+  ],
+  "msg": "成功",
+  "debug_id": "4c8a25c7",
+  "debug_info": "gAAAAABqt8whdr_jcQm9vIwW4t7_-lQ3nK9GuG0MO_NX6JZ8JdBicNqJmg4GoSFlSiVD3Z-YEGz6u9R5xdVgHz7IUU57IWy9texMw1V7FTYj9qcDOUg3hWlJdV3iecQ2igkuA6Sy_159bo3bT2lAMRgbecTXsoPWpOBZEbVV78ZW1yIsiv-x3zz9NWrXcbln7BrQp5N_tE1gWMx1eul7sQSHg8z7SnQVHiBSRjSJhFB8CB2yrsY2wiW70JX7Efg0UHvi99hpE_PvgeIq-w16UwlYKjyIZTF5wRMWVe67tHoxuRDdVfdQii-YFuWxuNAiXWctaAR3oB__1u0UAC4MiKI9OSqTsm79tIECTwZpu3rpZIX0XeyHfQ_OS5msOLteRbPHCo5cgL0UCDtiq8yOLjQRLEm_3b7AXD8EP20fBBNZ7pnm_NBfu66_vqDAxQeD0lOn_SF25kHn"
+ }
+}

@@ -1,5 +1,5 @@
 {
- "_note": "**真实响应**（2026-09-24 实调）：形状是 `data.data.items[].note{…}`，笔记字段平铺（不是 note_card）。这份 fixture 保留真实结构与字段名，但**所有 token 与签名参数都换成了假值**（xsec_token → TEST_TOKEN，sign/t → FAKESIGN/FAKE）。视频条目取自同一次响应的 20 条，用来验证映射层会丢掉它。",
+ "_note": "**真实响应**（2026-09-24 实调）：形状是 `data.data.items[].note{…}`，笔记字段平铺（不是 note_card）。这份 fixture 保留真实结构与字段名，但**所有 token 与签名参数都换成了假值**（xsec_token → TEST_TOKEN，sign/t → FAKESIGN/FAKE）。第 4 条是**真实的视频条目**（`type: video`，id 与 xhs-tikhub-video-detail.json 对齐）：检索不再按类型过滤，视频要保留下来、并带出 `noteType`，详情阶段靠它分流到视频端点。",
  "code": 200,
  "request_id": "req-fixture-search-real",
  "message": "Request successful. This request will incur a charge.",
@@ -178,6 +178,393 @@
       "desc": "好适合淡颜的色号~intoyou空气唇泥三代的这支#W10裸浮杏 ，真的吼吼看～ 和崔秀彬一样温柔的定制色一点不挑皮，黄",
       "shared_count": 17,
       "has_music": false
+     }
+    },
+    {
+     "mix_track_id": "NOTE__69d24918000000001a023887__4605287e57524189__妆容教程",
+     "new_help_style": false,
+     "model_type": "note",
+     "note": {
+      "update_time": 1790273179000,
+      "last_update_time": 1775810661,
+      "id": "69d24918000000001a023887",
+      "extract_text_enabled": 0,
+      "cover_image_index": 0,
+      "has_music": false,
+      "type": "video",
+      "collected_count": 49306,
+      "niced": false,
+      "user": {
+       "userid": "6344b525000000001802a3b5",
+       "red_id": "hym09028",
+       "track_duration": 0,
+       "nickname": "魚yomio.",
+       "red_official_verify_type": 0,
+       "show_red_official_verify_icon": false,
+       "images": "https://sns-avatar-qc.xhscdn.com/avatar/1040g2jo3151ojikg1c0g5oq4mkim58tlc5469bg?imageView2/2/w/80/format/jpg",
+       "red_official_verified": false,
+       "followed": false
+      },
+      "shared_count": 3839,
+      "comments_count": 287,
+      "video_duration": "2:46",
+      "liked": false,
+      "nice_count": 0,
+      "video_info_v2": {
+       "capa": {
+        "is_user_select": false,
+        "is_upload": false,
+        "frame_ts": 0,
+        "duration": 166
+       },
+       "consumer": {
+        "can_super_resolution": false
+       },
+       "image": {
+        "thumbnail_dim": "https://sns-na-i11.xhscdn.com/frame/110/0/01e9d24917520a8f0010000000019d5d6e4305_0.webp?imageView2/2/w/720/h/720/format/webp&ap=5&sc=SRH_SPRT&sign=FAKESIGN&t=FAKE",
+        "first_frame": "https://sns-na-i11.xhscdn.com/110/0/01e9d24917520a8f0010000000019d5d6d8d6a_0.jpg?imageView2/2/w/1440/format/webp&ap=5&sc=SRH_DTL&sign=FAKESIGN&t=FAKE",
+        "thumbnail": "https://sns-na-i11.xhscdn.com/frame/110/0/01e9d24917520a8f0010000000019d5d6e4305_0.webp?imageView2/2/w/5000/h/5000/format/webp/q/90&ap=5&sc=SRH_ORG&sign=FAKESIGN&t=FAKE"
+       },
+       "media": {
+        "user_level": 0,
+        "audio_info": {
+         "stream_types": [
+          103,
+          102,
+          101
+         ]
+        },
+        "audio_stream": {
+         "AAC": [
+          {
+           "audio_channels": 2,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/103/01e9d24917520a8f010370019d5d72f10c_103.m4a?sign=FAKESIGN&t=FAKE",
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/103/01e9d24917520a8f010370019d5d72f10c_103.m4a"
+           ],
+           "audio_bit_depth": 0,
+           "opaque1": {
+            "pcdn_302_flag": "false",
+            "use_pcdn": "1"
+           },
+           "weight": 59,
+           "audio_duration": 166206,
+           "avg_bitrate": 193620,
+           "default_stream": 0,
+           "size": 4022641,
+           "audio_samplerate": 44100,
+           "audio_codec": "aac",
+           "audio_bitrate": 193620,
+           "audio_profile": "LC",
+           "format": "FMP4",
+           "stream_type": 103
+          },
+          {
+           "audio_channels": 2,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/102/01e9d24917520a8f010370019d5d72ed12_102.m4a?sign=FAKESIGN&t=FAKE",
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/102/01e9d24917520a8f010370019d5d72ed12_102.m4a"
+           ],
+           "audio_bit_depth": 0,
+           "opaque1": {
+            "pcdn_302_flag": "false",
+            "use_pcdn": "1"
+           },
+           "weight": 60,
+           "audio_duration": 166206,
+           "avg_bitrate": 129632,
+           "default_stream": 0,
+           "size": 2693218,
+           "audio_samplerate": 44100,
+           "audio_codec": "aac",
+           "audio_bitrate": 129632,
+           "audio_profile": "LC",
+           "format": "FMP4",
+           "stream_type": 102
+          },
+          {
+           "audio_channels": 2,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/101/01e9d24917520a8f010370019d5d72ed52_101.m4a?sign=FAKESIGN&t=FAKE",
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/101/01e9d24917520a8f010370019d5d72ed52_101.m4a"
+           ],
+           "audio_bit_depth": 0,
+           "opaque1": {
+            "pcdn_302_flag": "false",
+            "use_pcdn": "1"
+           },
+           "weight": 69,
+           "audio_duration": 166206,
+           "avg_bitrate": 97640,
+           "default_stream": 1,
+           "size": 2028569,
+           "audio_samplerate": 44100,
+           "audio_codec": "aac",
+           "audio_bitrate": 97640,
+           "audio_profile": "LC",
+           "format": "FMP4",
+           "stream_type": 101
+          }
+         ]
+        },
+        "video": {
+         "biz_id": "281987663071426695",
+         "md5": "2c2becd6fff74320ad52b84ce2eab0f1",
+         "bound": [
+          {
+           "y": 0,
+           "w": 0,
+           "x": 0,
+           "h": 0
+          }
+         ],
+         "stream_types": [
+          258,
+          3001,
+          3002,
+          3005
+         ],
+         "height": 1920,
+         "width": 1080,
+         "duration": 167,
+         "opaque1": {
+          "hasHumanVoice": "true",
+          "videoLanguage": "[\"zh-CN\"]",
+          "insertSubtitleLanguages": "[\"zh-CN\"]",
+          "hd_screencast_stream": "http://sns-video-zl.xhscdn.com/stream/1/110/179/01e9d24917520a8f010370019d5da9fed4_179.mp4?sign=FAKESIGN&t=FAKE",
+          "amend_4k": "26",
+          "amend": "12",
+          "supportAbr": "1",
+          "default_screencast_stream": "http://sns-video-zl.xhscdn.com/stream/1/110/258/01e9d24917520a8f010370019d5d6ec6f5_258.mp4?sign=FAKESIGN&t=FAKE",
+          "loudnorm": "{\"lra\":6.1,\"htp\":0.07,\"hldn\":-7.77,\"ldn\":-11.17,\"thr\":-22.03}",
+          "supported_quality_types": "[\"720p\",\"1080p\"]",
+          "amend_2k": "26",
+          "bottomAvgLuma": "96",
+          "isSupportSubtitle": "true",
+          "audioLevInfo": "{\"audio_quality_level\":\"E\",\"mos_overall\":3.8091,\"version\":\"3.0\"}",
+          "topAvgLuma": "83",
+          "amend_mobile": "40",
+          "support_dolby_audio": "false",
+          "audioClsInfo": "{\"music_ratio\":0.6988988465076187,\"freesound_ratio\":0.10211203982121643,\"speech_ratio\":0.8303146950459431}",
+          "support_hdr": "false",
+          "weakNetUserFlag": "1",
+          "support_dolby_version": "false",
+          "domestic": "0",
+          "rightAvgLuma": "104"
+         },
+         "drm_type": 0,
+         "biz_name": 110,
+         "hdr_type": 0
+        },
+        "stream": {
+         "h265": [
+          {
+           "audio_bitrate": 0,
+           "stream_type": 3001,
+           "weight": 48,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/3001/01e9d24917520a8f010370019d5da3190d_3001.m4s?sign=FAKESIGN&t=FAKE",
+           "volume": 0,
+           "video_duration": 166200,
+           "duration": 166200,
+           "vmaf": -1,
+           "psnr": 40.555999755859375,
+           "audio_channels": 0,
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/3001/01e9d24917520a8f010370019d5da3190d_3001.m4s"
+           ],
+           "default_stream": 1,
+           "video_codec": "hevc",
+           "video_bitrate": 612808,
+           "opaque1": {
+            "roiWeight": "78.445115484375",
+            "encode_stream": "0",
+            "prefer_audio": "101",
+            "didLoudnorm": "false",
+            "pcdn_302_flag": "false",
+            "roi_info": "{\"alpha\":\"1.0\",\"gamma\":\"0.0\",\"lambda\":\"1.0E-5\",\"mvmaf\":\"84.57319548437499\"}",
+            "stream_index": "9999",
+            "use_pcdn": "1",
+            "quality_grade": "HD_720P",
+            "pcdn_supplier": "",
+            "quality_index": "130",
+            "quality_grade_name": "720p HD"
+           },
+           "fps": 60,
+           "size": 12731094,
+           "rotate": 0,
+           "format": "fmp4",
+           "sr": 0,
+           "stream_desc": "R265_FMP4_720P_3001_IOS",
+           "audio_duration": 0,
+           "width": 720,
+           "quality_type": "HD",
+           "height": 1280,
+           "avg_bitrate": 612808,
+           "hdr_type": 0,
+           "ssim": 0
+          },
+          {
+           "audio_bitrate": 0,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/3002/01e9d24917520a8f010370019d5da9e59f_3002.m4s?sign=FAKESIGN&t=FAKE",
+           "weight": 49,
+           "stream_type": 3002,
+           "video_duration": 166200,
+           "volume": 0,
+           "duration": 166200,
+           "vmaf": -1,
+           "psnr": 41.54899978637695,
+           "video_codec": "hevc",
+           "audio_channels": 0,
+           "default_stream": 0,
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/3002/01e9d24917520a8f010370019d5da9e59f_3002.m4s"
+           ],
+           "video_bitrate": 997955,
+           "opaque1": {
+            "roiWeight": "80.56920119000002",
+            "encode_stream": "0",
+            "prefer_audio": "102",
+            "didLoudnorm": "false",
+            "pcdn_302_flag": "false",
+            "roi_info": "{\"alpha\":\"1.0\",\"gamma\":\"0.0\",\"lambda\":\"1.0E-5\",\"mvmaf\":\"90.54875119000002\"}",
+            "use_pcdn": "1",
+            "stream_index": "9998",
+            "pcdn_supplier": "",
+            "quality_grade": "HD_1080P",
+            "quality_index": "99",
+            "quality_grade_name": "1080p HFR"
+           },
+           "fps": 60,
+           "size": 20732526,
+           "rotate": 0,
+           "format": "fmp4",
+           "sr": 0,
+           "audio_duration": 0,
+           "stream_desc": "R265_FMP4_1080P_3002_ios",
+           "width": 1080,
+           "quality_type": "FHD",
+           "height": 1920,
+           "avg_bitrate": 997955,
+           "hdr_type": 0,
+           "ssim": 0
+          },
+          {
+           "audio_bitrate": 0,
+           "stream_type": 3005,
+           "weight": 50,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/3005/01e9d24917520a8f010370019d5ebdfc41_3005.m4s?sign=FAKESIGN&t=FAKE",
+           "volume": 0,
+           "video_duration": 166200,
+           "duration": 166200,
+           "vmaf": -1,
+           "psnr": 43.43000030517578,
+           "video_codec": "hevc",
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/3005/01e9d24917520a8f010370019d5ebdfc41_3005.m4s"
+           ],
+           "default_stream": 0,
+           "audio_channels": 0,
+           "video_bitrate": 1670697,
+           "opaque1": {
+            "roiWeight": "76.90098139",
+            "encode_stream": "0",
+            "prefer_audio": "102",
+            "didLoudnorm": "false",
+            "pcdn_302_flag": "false",
+            "roi_info": "{\"alpha\":\"1.0\",\"gamma\":\"0.0\",\"lambda\":\"1.0E-5\",\"mvmaf\":\"93.60795139\"}",
+            "use_pcdn": "1",
+            "stream_index": "9997",
+            "pcdn_supplier": "",
+            "quality_grade": "HD_1080P",
+            "quality_index": "99",
+            "quality_grade_name": "1080p HFR"
+           },
+           "fps": 60,
+           "size": 34708733,
+           "rotate": 0,
+           "format": "fmp4",
+           "sr": 0,
+           "stream_desc": "R265_FMP4_1080P_3005_ios",
+           "height": 1920,
+           "width": 1080,
+           "quality_type": "FHD",
+           "audio_duration": 0,
+           "avg_bitrate": 1670697,
+           "hdr_type": 0,
+           "ssim": 0
+          }
+         ],
+         "av1": [],
+         "h264": [
+          {
+           "audio_bitrate": 56057,
+           "master_url": "http://sns-video-zl.xhscdn.com/stream/1/110/258/01e9d24917520a8f010370019d5d6ec6f5_258.mp4?sign=FAKESIGN&t=FAKE",
+           "stream_type": 258,
+           "weight": 47,
+           "video_duration": 166233,
+           "volume": 0,
+           "duration": 166234,
+           "vmaf": -1,
+           "psnr": 0,
+           "audio_channels": 2,
+           "video_codec": "h264",
+           "default_stream": 0,
+           "backup_urls": [
+            "http://sns-bak-v10.xhscdn.com/stream/1/110/258/01e9d24917520a8f010370019d5d6ec6f5_258.mp4"
+           ],
+           "video_bitrate": 1908900,
+           "fps": 30,
+           "opaque1": {
+            "encode_stream": "0",
+            "didLoudnorm": "false",
+            "stream_index": "10000",
+            "pcdn_302_flag": "false",
+            "use_pcdn": "0",
+            "pcdn_supplier": ""
+           },
+           "size": 40968363,
+           "audio_codec": "aac",
+           "rotate": 0,
+           "format": "mp4",
+           "sr": 0,
+           "stream_desc": "X264_MP4",
+           "height": 1280,
+           "audio_duration": 166206,
+           "width": 720,
+           "quality_type": "HD",
+           "avg_bitrate": 1971599,
+           "hdr_type": 0,
+           "ssim": 0
+          }
+         ],
+         "h266": []
+        },
+        "video_id": 137872474977208980
+       }
+      },
+      "result_from": "",
+      "collected": false,
+      "xsec_token": "YBiOcvUVxkXaRJ4iSOl6PrWaDTc0epS2UFxQ4p4mRx29k=",
+      "desc": "#没事儿也化妆  #变妆看我的  #新手化妆教程  #方圆脸  #新手化妆步骤  #妆容教程  #妆教  #亚裔妆 #R",
+      "liked_count": 76030,
+      "click_score": 0.047190383076667786,
+      "images_list": [
+       {
+        "fileid": "1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg",
+        "height": 1748,
+        "url": "https://sns-na-i11.xhscdn.com/1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg?imageView2/2/w/576/format/webp/q/87%7CimageMogr2/strip&redImage/frame/0&ap=5&sc=SRH_PRV&sign=FAKESIGN&t=FAKE",
+        "width": 1308,
+        "original": "",
+        "url_size_large": "https://sns-na-i11.xhscdn.com/1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg?imageView2/2/w/1440/format/webp&ap=5&sc=SRH_DTL&sign=FAKESIGN&t=FAKE",
+        "trace_id": "1040g2sg31uj1i0o02ie05oq4mkim58tl2je15mg",
+        "need_load_original_image": false
+       }
+      ],
+      "title": "巨详细全妆跟练｜普通女生速学猫塑亚裔妆～",
+      "geo_info": {
+       "distance": ""
+      },
+      "timestamp": 1775388952
      }
     }
    ]

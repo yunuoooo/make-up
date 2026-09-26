@@ -216,7 +216,11 @@ const REFUSAL_LABELS: Record<string, string> = {
   "unknown-note": "笔记不在本轮搜索结果里",
   "quota-exhausted": "上游配额用尽",
   "auth-failed": "上游凭据失效",
-  "bad-argument": "参数不完整"
+  "bad-argument": "参数不完整",
+  // 视频详情成功、只是没拿到字幕。三个都是预期内结果，不是故障。
+  "no-voice": "视频没有人声",
+  "no-transcript": "视频没有字幕",
+  "transcript-failed": "字幕没取到"
 };
 
 /** 把工具结果压缩成"看到了什么"：条数、标题、大小，或失败原因。 */

@@ -34,6 +34,8 @@ npm run dev            # http://localhost:3000
 
 取数只有一条链路：**TikHub** 的 HTTP 接口（`lib/xhs/tikhub.ts`）。架构与改动面见 [09-24 集成方案](./docs/specs/09-24-xhs-api-integration.md)，字段、两层信封与计费陷阱见 [TikHub SSOT](./docs/specs/09-24-tikhub-xhs-ssot.md)。2026-09-24 之前还有一条本地浏览器驱动的 MCP 回退路径，已连同二进制、登录脚本和部署文档一起删除。
 
+**图文与视频都支持**（[09-25 视频理解](./docs/specs/09-25-video-understanding.md)）：检索不按笔记类型过滤；详情按搜索结果里的 `type` 分流到对应端点，视频笔记会**连口播字幕一起返回**——字幕取自详情响应里的 `.srt` 地址，解析成带 `[MM:SS]` 时间戳的纯文本。没有视频模型、不下载视频、不需要任何二进制。视频没有人声或没有字幕轨时，笔记照常返回并带一个 `reason`（`no-voice` / `no-transcript` / `transcript-failed`），答案会如实说明而不是假装看过画面。字幕只向 `xhscdn.com` / `rednotecdn.com` 取，且**字幕地址本身（带签名）不进模型上下文、日志与 SSE**。
+
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `XHS_SOURCE_MODE` | `api` | 只有 `api` 算开；其它值（含留空、写错）按「没有数据源」降级——保险丝，不是开关 |
@@ -42,7 +44,8 @@ npm run dev            # http://localhost:3000
 | `XHS_API_TIMEOUT_SECONDS` | `60` | 单请求超时（上游建议 120s、至少 60s） |
 | `XHS_API_BUDGET_SECONDS` | `60` | 单轮上游累计耗时预算，超了就不再发起新请求，已拿到的照发 |
 | `XHS_API_SEARCH_PAGES` | `2` | 搜索翻页上限，每页 20 条 |
-| `XHS_API_DETAIL_LIMIT` | `10` | 一轮读几篇正文——**唯一的省钱杠杆**（逐次计费，取技能要求的 6–10 篇上界） |
+| `XHS_API_DETAIL_LIMIT` | `10` | 一轮读几篇正文——**唯一的省钱杠杆**（逐次计费，取技能要求的 6–10 篇上界；视频笔记走同一个计数器） |
+| `XHS_API_TRANSCRIPT_LIMIT` | `20000` | 视频字幕的字符上限。与正文的 8000 分开：十分钟的教程字幕长得多，截断的代价也更大 |
 
 ### 淘宝商品卡片（默认关）
 

@@ -27,7 +27,7 @@
 
 ## 运行时依赖边界
 
-部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载。生产上 `.local-data` 由 `LOOKTRACE_DATA_DIR` + `PI_CODING_AGENT_DIR` 指到发布树外面（`/srv/make-up-shared/.local-data`），这样发版换目录碰不到用户数据；生产发布树的路径 `/srv/make-up` **一个字都不能改**——会话目录名按 cwd 的绝对路径生成，换路径等于所有历史对话静默消失。小红书取数走 **TikHub**（`XHS_SOURCE_MODE=api` 且 `XHS_API_TOKEN` 非空才发请求；token 为空或模式是别的值时整条链路降级，不发请求也不伪装成真实来源），token 走请求头 `Authorization: Bearer`、不进 URL。**取数不需要任何二进制**：没有浏览器、没有登录态、没有本地服务。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH` 可覆盖默认值。
+部署物必须自包含：pi 二进制来自 `node_modules/.bin/pi`，pi 状态写入 `.local-data/pi`（含对话会话 `.local-data/pi/sessions/`），技能从仓库目录加载。生产上 `.local-data` 由 `LOOKTRACE_DATA_DIR` + `PI_CODING_AGENT_DIR` 指到发布树外面（`/srv/make-up-shared/.local-data`），这样发版换目录碰不到用户数据；生产发布树的路径 `/srv/make-up` **一个字都不能改**——会话目录名按 cwd 的绝对路径生成，换路径等于所有历史对话静默消失。小红书取数走 **TikHub**（`XHS_SOURCE_MODE=api` 且 `XHS_API_TOKEN` 非空才发请求；token 为空或模式是别的值时整条链路降级，不发请求也不伪装成真实来源），token 走请求头 `Authorization: Bearer`、不进 URL。检索不按笔记类型过滤，详情按搜索结果里的 `type` 分流到图文/视频两个端点；**视频的理解来源是口播字幕**（详情响应里的 `.srt`，解析成 `[MM:SS]` 纯文本，`lib/xhs/transcript.ts`），没有视频模型、不下载视频、不新增任何二进制或依赖。**取数不需要任何二进制**：没有浏览器、没有登录态、没有本地服务。不要依赖全局安装的 pi、`~/.pi` 或 `/tmp`；`PI_BIN`、`PI_CODING_AGENT_DIR`、`PI_SKILL_PATH` 可覆盖默认值。
 
 ## 编码风格与命名约定
 
