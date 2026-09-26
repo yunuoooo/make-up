@@ -2,6 +2,7 @@
 
 Status: Implemented（2026-09-24）—— 设计、切换与 Phase D 清账都已完成；第 8/10/11 节是留档，不是待办
 Date: 2026-09-24
+Revised: 2026-09-26 — **决策 11 被推翻**：检索不再限定图文（`note_type` 不传，即「不限」），详情按搜索时记下的类型分流到图文/视频两个端点；视频笔记连带返回 `.srt` 字幕。上游字段与字幕口径见 SSOT 第 2.3 节，方案见 [09-25-video-understanding.md](./09-25-video-understanding.md)。**第 12 节里「视频笔记只有封面可用」那两条已被取代。**
 Revised: 2026-09-24 — 检索改为**固定只取图文笔记**（决策 11），`noteType` 不再列为后续增量；技能与工具描述同步。
 Revised: 2026-09-24 — 供应商从 Just One 换成 **TikHub**（同一篇图文笔记 Just One 返回空 `data`，TikHub 拿到全文）。工具契约、闸门、链接策略、图文限定**全部不变**，只换数据源实现与字段 SSOT。
 Related specs: [09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)（字段、参数、错误码、计费陷阱**只在那里定义一次**）· [09-24-justoneapi-xhs-ssot.md](./09-24-justoneapi-xhs-ssot.md)（**已作废**，保留为换供应商的依据）· [09-07-xhs-mcp-integration.md](./09-07-xhs-mcp-integration.md)（**本文取代其接入设计**，第 12/13 节保留为上游缺陷的历史记录）· [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md) · [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md) · [09-22-langfuse-observability.md](./09-22-langfuse-observability.md) · [09-23-conversation-sessions.md](./09-23-conversation-sessions.md)
@@ -32,7 +33,7 @@ Related specs: [09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)（字段�
 | 8 | 失败形态 | **闸门**返回可读 JSON + `details.reason`；**上游失败**抛出可读错误 | 闸门（未知 noteId、预算用尽）是预期内的结果，不该显示成故障；上游失败抛出去才能让观测层标成 failed（09-22 的失败分析就靠这个），而 pi 的失败工具结果同样把原因交给模型，模型两边都看得到 |
 | 9 | 串行队列 | **删除**执行队列 | 原队列是为 Chromium 的有状态驱动加的（`xiaohongshu-mcp.ts:132`，该文件已随 Phase D 删除），HTTP 数据接口没有这个约束 |
 | 10 | 技能改动 | **本文直接给出条款级改动**（第 7 节） | 换源与技能改动在同一次改动里闭环，不留「已知不一致」 |
-| 11 | 笔记类型 | **检索固定只取图文**：请求带 `note_type=普通笔记`（服务端过滤，TikHub 是中文枚举） | 技能的产出要一张能看清妆效的**完成妆画面**，而视频笔记在数据源里只有一张封面、拿不到画面帧。代价是候选池变小（视频在部分关键词下占 45–66%，09-07 第 12.3 节），所以搜不到时要换关键词而不是放宽类型 |
+| 11 | 笔记类型 | ~~**检索固定只取图文**（`note_type=普通笔记`）~~ → **2026-09-26 推翻：检索不限类型**，详情按 `type` 分流到图文/视频两个端点 | 原理由是「视频只有封面、拿不到画面帧」，**字幕路径让这个理由不成立了**：视频详情带 `.srt` 字幕地址，口述内容免费可取。妆容教程的主要形态就是视频，把它挡在检索外等于主动丢掉大部分内容。原文记的「视频在部分关键词下占 45–66%」现在读来正是放开的理由而不是代价。见 [09-25-video-understanding.md](./09-25-video-understanding.md) 第 1 节 |
 
 ## 2. 目标架构
 
@@ -62,10 +63,12 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 | 工具名 | 参数 | 实现（唯一链路：TikHub） |
 | --- | --- | --- |
 | `xhs_source_status` | 无 | 报：当前模式、是否配了 token、本轮已用调用数（不回显 token 本身） |
-| `xhs_search_notes` | `keyword`（必填）、`page`（可选，默认 1）、`sortType`（可选，默认 `general`） | `GET /api/v1/xiaohongshu/app_v2/search_notes`，**固定带 `note_type=普通笔记`**（决策 11）；内部存下 `noteId → xsec_token` |
-| `xhs_get_note_detail` | `noteId`（必填） | `GET /api/v1/xiaohongshu/app_v2/get_image_note_detail`（只吃 `note_id`，SSOT 第 2.2 节），内部补 `xsec_token` |
+| `xhs_search_notes` | `keyword`（必填）、`page`（可选，默认 1）、`sortType`（可选，默认 `general`） | `GET /api/v1/xiaohongshu/app_v2/search_notes`，**不带 `note_type`**（即「不限」，决策 11 已推翻）；内部存下 `noteId → 类型` |
+| `xhs_get_note_detail` | `noteId`（必填） | 按搜索时记下的类型分流：图文走 `get_image_note_detail`，视频走 `get_video_note_detail` 并连带取 `.srt` 字幕（决策 11 推翻后的新增能力，见 [09-25](./09-25-video-understanding.md)）。两个端点都只吃 `note_id`，内部补 `xsec_token` |
 
-`noteType` / `timeFilter` **v1 不暴露给模型**：默认值已经够用，多一个枚举多一份误用面。`noteType` 更进一步，**固定写死成图文过滤**（决策 11）——这不是默认值，是不给选择：视频笔记在链路里拿不到画面帧。要临时放宽只能改代码里的常量，不要在技能或提示词里给它留口子。
+`noteType` / `timeFilter` **仍然不暴露给模型**：类型由服务端在检索时记下、在详情时自己分流，不需要模型参与；`timeFilter` 保持默认。多一个枚举多一份误用面，这条不变。
+
+**分流必须在调用前决定**，不能「先试图文端点、失败了再试视频端点」——TikHub **每次尝试都计费**（SSOT 第 2.2 节）。类型从搜索条目里来，所以未知 id 仍然被 `unknown-note` 闸门先拒掉，走不到分流。
 
 `lib/pi/bridge.ts` 的白名单是 `read,xhs_source_status,xhs_search_notes,xhs_get_note_detail`——工具名与数据源实现无关，**换供应商、换传输都不需要改白名单**。
 
@@ -187,7 +190,9 @@ pi Agent（技能 xiaohongshu-makeup-advisor）
 
 **一个必须承认的取舍**：详情只有 10 篇（且每篇都计费），而模型的挑选依据只有「标题 + 60 字预览 + 互动数 + 封面」，**挑选质量是新的风险点**，这是 MCP 时代（没有这篇数上限、正文随便读）没有的。三个缓解方向：①技能里给出选择判据（第 7 节，标题含「教程/试色/产品清单」优先）；②`DETAIL_LIMIT` 按实测金额上下调；③先把封面拿进答案，用画面弥补正文的不足（第 6.4 节）。**不要**用「读不到就凭印象补」来缓解——技能明确禁止。
 
-**另一个是新加的（决策 11）**：检索限定图文之后，候选池会明显变小——视频在部分关键词下占搜索结果的 45–66%（09-07 第 12.3 节）。所以「搜索返回 20 条」里的可用条数比 MCP 时代少，换关键词的次数可能变多。这是拿广度换「答案能给出可靠完成妆画面」，**换来的是图片质量和图组数量**（图文详情给 5–9 张图，视频只给一张封面）。
+~~**另一个是新加的（决策 11）**：检索限定图文之后，候选池会明显变小……~~
+
+**2026-09-26 更正**：上一段的前提已经不成立——检索不再限定图文，所以候选池不再因类型而缩小。反过来，视频笔记现在**自己就是一类可用素材**：它给的是带时间戳的口播全文（字幕），而不是封面。原来那句「拿广度换图片质量」的取舍消失了，详情的挑选依据也应当相应放宽：标题含「教程」的视频，其价值不再低于图文。见 [09-25-video-understanding.md](./09-25-video-understanding.md)。
 
 ## 5. 评论退场
 

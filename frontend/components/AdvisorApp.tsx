@@ -5,6 +5,7 @@ import {
   Archive,
   ChevronRight,
   Clock3,
+  Database,
   Library,
   MessageCircleMore,
   Plus,
@@ -32,6 +33,7 @@ import { ChatView } from "@/frontend/components/chat/ChatView";
 import { LibraryComingSoon } from "@/frontend/components/beauty-kit/LibraryComingSoon";
 import { LibraryView } from "@/frontend/components/beauty-kit/LibraryView";
 import { ProductDialog } from "@/frontend/components/beauty-kit/ProductDialog";
+import { EvidencePanel } from "@/frontend/components/reads/EvidencePanel";
 import { useBeautyKit } from "@/frontend/hooks/useBeautyKit";
 import { useChat } from "@/frontend/hooks/useChat";
 import { useConversations } from "@/frontend/hooks/useConversations";
@@ -43,6 +45,8 @@ type View = "chat" | "library";
 
 export function AdvisorApp() {
   const [view, setView] = useState<View>("chat");
+  // 证据面板的展开状态放在这里：手机上的入口在标题栏，状态得由两边共同持有。
+  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<UserProduct | null>(null);
   const [productToDelete, setProductToDelete] = useState<UserProduct | null>(null);
@@ -229,9 +233,20 @@ export function AdvisorApp() {
             </div>
           </div>
           {view === "chat" ? (
-            <div className="flex items-center gap-2 rounded-full border border-black/[.065] bg-white px-3 py-1.5 text-xs text-[#77716b] shadow-sm">
-              <span className={chat.isSending ? "size-1.5 animate-pulse rounded-full bg-[#d8587e]" : "size-1.5 rounded-full bg-[#d8587e]"} />
-              {chat.isSending ? chat.runtimePhase ?? "顾问工作中" : "顾问在线"}
+            <div className="flex items-center gap-2">
+              {/* 手机上窄边放不下，证据入口挪到这里（悬浮按钮会压住输入框）。 */}
+              <Button
+                variant="outline"
+                onClick={() => setIsEvidenceOpen((previous) => !previous)}
+                className="rounded-full border-black/[.065] bg-white text-xs text-[#77716b] shadow-sm lg:hidden"
+              >
+                <Database />
+                取数证据
+              </Button>
+              <div className="flex items-center gap-2 rounded-full border border-black/[.065] bg-white px-3 py-1.5 text-xs text-[#77716b] shadow-sm">
+                <span className={chat.isSending ? "size-1.5 animate-pulse rounded-full bg-[#d8587e]" : "size-1.5 rounded-full bg-[#d8587e]"} />
+                {chat.isSending ? chat.runtimePhase ?? "顾问工作中" : "顾问在线"}
+              </div>
             </div>
           ) : IS_LIBRARY_OPEN ? (
             <Button onClick={openCreateProduct} className="rounded-xl bg-[#242421] text-white hover:bg-[#393834]">
@@ -242,16 +257,25 @@ export function AdvisorApp() {
         </header>
 
         {view === "chat" ? (
-          <ChatView
-            turns={chat.turns}
-            draft={chat.message}
-            isSending={chat.isSending}
-            runtimePhase={chat.runtimePhase}
-            isHistorical={chat.isHistorical}
-            isSessionMissing={chat.isSessionMissing}
-            onDraftChange={chat.setMessage}
-            onSubmit={chat.submitMessage}
-          />
+          // 对话与证据面板并排：展开证据时对话照样看得见，只是挤一点（规格第 5 节的要求）。
+          <div className="flex min-h-0 flex-1">
+            <ChatView
+              turns={chat.turns}
+              draft={chat.message}
+              isSending={chat.isSending}
+              runtimePhase={chat.runtimePhase}
+              isHistorical={chat.isHistorical}
+              isSessionMissing={chat.isSessionMissing}
+              onDraftChange={chat.setMessage}
+              onSubmit={chat.submitMessage}
+            />
+            <EvidencePanel
+              conversationId={chat.conversationId}
+              isSending={chat.isSending}
+              open={isEvidenceOpen}
+              onToggle={() => setIsEvidenceOpen((previous) => !previous)}
+            />
+          </div>
         ) : IS_LIBRARY_OPEN ? (
           <LibraryView
             products={beautyKit.filteredProducts}

@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createXhsClient, SHAPE_DRIFT_CODE, XhsApiError, type XhsClient } from "../../lib/xhs/tikhub.ts";
-import type { XhsNoteDetail, XhsNoteSummary } from "../../lib/xhs/types.ts";
+import type { XhsNoteDetail, XhsNoteSummary, XhsTranscriptIssue } from "../../lib/xhs/types.ts";
 
 /**
  * 小红书数据源的工具层：把「搜索 + 详情」两个只读能力交给模型，数据源藏在下面。
@@ -77,12 +77,32 @@ function detailShape(note: XhsNoteDetail): Record<string, unknown> {
     ...(note.noteType ? { noteType: note.noteType } : {}),
     ...(note.postedAt ? { postedAt: note.postedAt } : {}),
     ...(note.ipLocation ? { ipLocation: note.ipLocation } : {}),
+    // 只有视频笔记有的两个：`durationSeconds` 统一成秒，`transcript` 是带 `[MM:SS]` 的纯文本。
+    // `transcriptIssue` **不进这里**——它是「字幕为什么没拿到」，属于工具结果而不是笔记本身。
+    ...(note.durationSeconds ? { durationSeconds: note.durationSeconds } : {}),
     text: note.text,
     tags: note.tags,
     ...(note.stats ? { stats: note.stats } : {}),
     images: note.images,
+    ...(note.transcript ? { transcript: note.transcript } : {}),
     truncated: note.truncated
   };
+}
+
+/**
+ * 字幕缺失时交给模型的那句话（视频理解规格第 4.2 节）。
+ *
+ * **不能静默省略**：这个仓库最贵的事故就是「配置错了不报错，只是静默降级」——
+ * 模型不知道自己没拿到字幕，就会按「视频我都看过了」往下写。
+ */
+function transcriptNotice(issue: XhsTranscriptIssue): string {
+  if (issue.reason === "no-voice") {
+    return "这条视频没有人声讲解（多半是配乐 + 字幕贴纸），拿不到口播内容，不要再花预算在它身上。";
+  }
+  if (issue.reason === "no-transcript") {
+    return "这条视频没有字幕轨道，只能靠标题、正文和封面，不要编造视频里的画面细节。";
+  }
+  return `字幕没取到（${issue.detail}），只能靠标题、正文和封面，不要编造视频里的画面细节。`;
 }
 
 /** 上游失败 → 可读文本 + 停止标记。不把请求头、token 或 URL 带进任何信息。 */
@@ -227,10 +247,11 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
   pi.registerTool({
     name: "xhs_search_notes",
     label: "XHS Search Notes",
-    description: "在小红书按关键词搜索**图文笔记**（服务端按 note_type=普通笔记 过滤，视频笔记不会出现），"
-      + "返回标题、作者、发布时间、互动数、封面，以及一段约 60 字的**截断预览**。"
-      + "预览不是正文，任何情况下都不能当正文用；要读正文请用 xhs_get_note_detail。"
-      + "搜索只负责定位，用来决定打开哪几篇；搜不到就换关键词，不要指望放宽笔记类型。",
+    description: "在小红书按关键词搜索笔记，**图文与视频一起返回**（不再按笔记类型过滤），"
+      + "返回标题、作者、发布时间、互动数、封面、笔记类型（noteType：normal 图文 / video 视频），"
+      + "以及一段约 60 字的**截断预览**。"
+      + "预览不是正文，任何情况下都不能当正文用；要读正文（视频还会带上口播字幕）请用 xhs_get_note_detail。"
+      + "搜索只负责定位，用来决定打开哪几篇；搜不到就换关键词或拆条件。",
     parameters: Type.Object({
       keyword: Type.String({ description: "搜索关键词，例如 `韩系氧气妆 教程`" }),
       page: Type.Optional(Type.Number({ description: "页码，从 1 开始，默认 1" })),
@@ -273,8 +294,12 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
   pi.registerTool({
     name: "xhs_get_note_detail",
     label: "XHS Note Detail",
-    description: "读取一篇笔记的正文全文、话题和图片。只能读本轮 xhs_search_notes 返回过的 noteId，"
-      + `本轮最多读 ${detailLimit} 篇。正文全文只有这个工具给得到，搜索里的预览不能替代。`,
+    description: "读取一篇笔记的正文全文、话题和图片。视频笔记还会一并带上**口播字幕**（带 `[MM:SS]` 时间戳的纯文本），"
+      + "不需要额外动作；引用视频结论时带上时间戳。"
+      + "视频没有字幕时笔记照常返回，并带 `reason`（no-voice 没有人声 / no-transcript 没有字幕轨 / transcript-failed 字幕没取到），"
+      + "遇到就如实说明并降级到标题、正文和封面，**不要编造视频里的画面细节**。"
+      + `只能读本轮 xhs_search_notes 返回过的 noteId，本轮最多读 ${detailLimit} 篇。`
+      + "正文全文只有这个工具给得到，搜索里的预览不能替代。",
     parameters: Type.Object({
       noteId: Type.String({ description: "笔记 ID，取自 xhs_search_notes 的返回" })
     }),
@@ -287,7 +312,9 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
       if (gate) return refusal(gate);
 
       try {
-        const note = await timed(() => client!.getNoteDetail(noteId));
+        // 类型取自本轮搜索结果（`seen` 里白拿），详情按它分流到图文或视频端点——
+        // 必须在**调用前**定：两个端点形状不同，而每次尝试都计费（视频理解规格第 3.2 节）。
+        const note = await timed(() => client!.getNoteDetail(noteId, { noteType: state.seen.get(noteId) }));
         state.detailCalls += 1;
         if (!note) {
           // 上游「报成功却没内容」，与「字段不认识」是两回事：这条是采集侧，那条是契约侧。
@@ -307,9 +334,19 @@ export default async function xhsSourceExtension(pi: ExtensionAPI): Promise<void
           });
         }
         state.consecutiveEmptyDetails = 0;
+        // 字幕缺失是**预期内结果**：笔记照样返回，只把原因和一句人话一并交给模型。
+        const issue = note.transcriptIssue;
         return {
-          content: [{ type: "text", text: jsonText({ source: "tikhub", mode, note: detailShape(note) }) }],
-          details: details()
+          content: [{
+            type: "text",
+            text: jsonText({
+              source: "tikhub",
+              mode,
+              ...(issue ? { reason: issue.reason, message: transcriptNotice(issue) } : {}),
+              note: detailShape(note)
+            })
+          }],
+          details: details(issue ? { reason: issue.reason } : {})
         };
       } catch (error) {
         throw apiFailure(state, error);
