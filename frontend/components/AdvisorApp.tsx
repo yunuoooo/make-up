@@ -5,11 +5,13 @@ import {
   Archive,
   ChevronRight,
   Clock3,
+  Database,
   Library,
   MessageCircleMore,
   Plus,
   Trash2
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/frontend/components/ui/button";
 import {
@@ -131,6 +133,21 @@ export function AdvisorApp() {
           <SidebarGroup className="py-3">
             <SidebarGroupContent>
               <SidebarMenu className="gap-1.5">
+                {/* 排查工具，不是产品功能：单开一条路由，侧边栏只留入口。 */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    className="h-10 rounded-xl px-3 text-white/72 hover:bg-white/10 hover:text-white"
+                  >
+                    <Link href="/xhs-reads">
+                      <Database />
+                      <span>取数记录</span>
+                      <span className="ml-auto rounded-full bg-white/8 px-2 py-0.5 text-[10px] text-white/40">
+                        排查
+                      </span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={view === "chat"}
