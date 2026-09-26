@@ -1,0 +1,113 @@
+name: deploy
+
+# push 到 main 就发版；workflow_dispatch 用于重发或回滚（把 ref 填成旧的 commit）。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 要发布的 commit / tag / 分支。填旧的 commit 就是回滚。
+        required: false
+        default: main
+
+# 部署不能被打断：中途取消会在服务器上留下半写的 make-up.prev，而它同时是下一次
+# rsync 的增量基准和回滚源。服务器侧还有一道 flock 挡手工并发。
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # 固定 24.04，别用 ubuntu-latest：产物里带着平台相关的原生包
+    # （@next/swc-linux-x64-gnu、@img/sharp-linux-x64），glibc 要和服务器对得上。
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      SSH_OPTS: "-o UserKnownHostsFile=/home/runner/.ssh/known_hosts -o IdentitiesOnly=yes"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2 # 和服务器上的 node 对齐
+          cache: npm
+
+      - name: 记录要发布的 commit
+        run: echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      # build 必须在 typecheck 之前：tsconfig.json 把 .next/types/**/*.ts 也算进来，
+      # 先跑 typecheck 会静默跳过 Next 的路由类型校验。
+      - name: 构建
+        run: npm run build
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 测试
+        run: npm test
+
+      # 不经过 actions/upload-artifact：它会重新打包并丢掉可执行位和软链，而
+      # node_modules/.bin/pi 正是个软链，可执行位丢了要到运行时 spawn 才炸
+      # （lib/pi/bridge.ts 用的是 access()，即 F_OK 不是 X_OK），首页却照样 200。
+      - name: 组装发布产物
+        run: |
+          set -eu
+          mkdir -p release
+          git archive HEAD | tar -x -C release
+          # .next 里 146MB 是 webpack 构建缓存，运行时一点都用不到
+          cp -a .next release/.next
+          rm -rf release/.next/cache
+          cp -a node_modules release/node_modules
+          rm -rf release/node_modules/.cache
+          du -sh release
+
+      - name: 配置 SSH
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # 服务此时还在跑旧版本：rsync 直接写进 .prev，线上不受影响。
+      - name: 同步产物到服务器
+        run: |
+          # -z 是必须的：node_modules 约 600MB，压完约 137MB，而这条链路跨境。
+          # 不开压缩就是按 600MB 走。
+          rsync -rlptDz --no-owner --no-group --delete --stats \
+            --exclude=.env --exclude=.local-data \
+            -e "ssh -i ~/.ssh/deploy_key $SSH_OPTS" \
+            release/ "$DEPLOY_USER@$DEPLOY_HOST:/srv/make-up.prev/"
+
+      # 发布脚本放在 shared 下、每次同步过去，保证服务器跑的就是这个 commit 里的版本。
+      # 先写成 .new 再 mv：万一有人正在手工跑它，原地覆盖会打断那个进程。
+      - name: 同步远端发布脚本
+        run: |
+          set -eu
+          scp -i ~/.ssh/deploy_key $SSH_OPTS \
+            scripts/deploy-remote.sh "$DEPLOY_USER@$DEPLOY_HOST:/srv/make-up-shared/.deploy-remote.sh.new"
+          ssh -i ~/.ssh/deploy_key $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod 755 /srv/make-up-shared/.deploy-remote.sh.new && mv -f /srv/make-up-shared/.deploy-remote.sh.new /srv/make-up-shared/deploy-remote.sh"
+
+      - name: 切换 + 健康检查（失败会自动回滚）
+        run: |
+          ssh -i ~/.ssh/deploy_key $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sh /srv/make-up-shared/deploy-remote.sh $DEPLOY_SHA"
+
+      - name: 站点自检
+        run: |
+          set -eu
+          code=$(curl -s -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 2 "http://$DEPLOY_HOST:3000/")
+          echo "http://$DEPLOY_HOST:3000/ → $code"
+          [ "$code" = "200" ]

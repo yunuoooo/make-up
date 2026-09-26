@@ -1,7 +1,11 @@
 #!/bin/sh
 set -eu
 
-# 部署 looktrace：拉代码 → 装依赖 → 校验 .env → 构建 → 自检 → 重启。
+# 本地/手工部署：拉代码 → 装依赖 → 校验 .env → 构建 → 自检 → 重启。
+#
+# **生产服务器不走这个脚本。** 服务器上的 /srv/make-up 是 CI 发布的产物（不是 git
+# clone），发版靠 push 到 main 触发的 GitHub Actions —— 服务器不构建、不装依赖。
+# 见 docs/specs/09-26-cicd-deploy.md。这个脚本现在服务的是本机开发和应急手改。
 #
 # 用法（在仓库里或任意目录都能跑，脚本自己 cd 到仓库根）：
 #   ./scripts/deploy.sh
@@ -11,6 +15,7 @@ set -eu
 #   DEPLOY_BRANCH         期望所在分支；不一致就停下（不自动切换，避免丢本机改动）
 #   DEPLOY_SERVICE        systemd 单元名；给了就用 sudo systemctl restart
 #   DEPLOY_RESTART_CMD    自定义重启命令（优先级最高）
+#   DEPLOY_ALLOW_NOHUP=1  允许用 pkill + nohup 重启（本机开发用；默认关，理由见下方 restart_kind）
 #   DEPLOY_PORT           就绪探测的端口，默认 3000
 #   DEPLOY_SKIP_PULL=1    跳过 git 拉取
 #   DEPLOY_SKIP_INSTALL=1 跳过 npm ci
@@ -44,34 +49,17 @@ echo "  node $(node -v) · 仓库 $ROOT_DIR"
 [ -f "$ROOT_DIR/.env" ] || fail ".env 不存在。复制 .env.example 为 .env，至少填 DEEPSEEK_API_KEY、XHS_API_TOKEN。"
 
 step "2/6 校验 .env（不回显任何密钥）"
-# 只报「有没有」和「指向哪里」，绝不打印值。
-node --env-file="$ROOT_DIR/.env" -e '
-const problems = [];
-const warn = [];
-const mode = (process.env.XHS_SOURCE_MODE ?? "").trim();
-if (mode !== "api") {
-  problems.push(`XHS_SOURCE_MODE 期望 "api"，实际是 "${mode || "(空)"}"。TikHub 是唯一的取数链路：其它值会让整条链路静默降级——不发请求，也不伪装成真实来源。`);
-}
-const token = (process.env.XHS_API_TOKEN ?? "").trim();
-if (!token) problems.push("XHS_API_TOKEN 为空：整条取数链路会静默降级，一次上游请求都不发。");
-const base = (process.env.XHS_API_BASE_URL ?? "").trim();
-if (base && !base.includes("tikhub.io")) problems.push(`XHS_API_BASE_URL 指向 ${base}，但 xhs 的供应商现在是 TikHub（api.tikhub.io）。`);
-if (!(process.env.DEEPSEEK_API_KEY ?? "").trim() && !(process.env.OPENAI_API_KEY ?? "").trim()) {
-  warn.push("没有 DEEPSEEK_API_KEY / OPENAI_API_KEY：除非你显式配了别的 PI_PROVIDER，否则模型跑不起来。");
-}
-if (problems.length) {
-  console.error("✗ .env 有 " + problems.length + " 个问题：");
-  for (const p of problems) console.error("  - " + p);
-  process.exit(1);
-}
-const limit = (process.env.XHS_API_DETAIL_LIMIT ?? "10").trim();
-const cards = (process.env.TAOBAO_CARDS_ENABLED ?? "false").trim();
-console.log(`  ✓ xhs: api 模式 → ${base || "https://api.tikhub.io"}（token 已配置，详情上限 ${limit} 篇）`);
-console.log(`  ✓ 淘宝卡片: ${cards === "true" || cards === "1" ? "开（一轮最多 8 张，按次计费）" : "关"}`);
-for (const w of warn) console.log("  ! " + w);
-'
+# 逻辑在 scripts/preflight.mjs，和 CI 发布时对新树跑的那次是同一份。
+node "$ROOT_DIR/scripts/preflight.mjs" --env --env-file="$ROOT_DIR/.env"
 
 step "3/6 取代码"
+if ! git -C "$ROOT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  fail "这里不是 git 仓库——说明这棵树是 CI 发布的产物，不是 clone。
+  生产服务器上的发布走 GitHub Actions（push 到 main 自动部署），不要再手工更新它：
+    gh workflow run deploy.yml --ref main        # 重新发一次
+    gh workflow run deploy.yml -f ref=<旧 commit>  # 回滚
+  手工路径（在服务器上）：sh /srv/make-up-shared/deploy-remote.sh --rollback"
+fi
 if [ "${DEPLOY_SKIP_PULL:-0}" = "1" ]; then
   echo "  (按 DEPLOY_SKIP_PULL=1 跳过)"
 else
@@ -103,46 +91,47 @@ if [ "${DEPLOY_SKIP_SELFCHECK:-0}" = "1" ]; then
   echo "  (按 DEPLOY_SKIP_SELFCHECK=1 跳过)"
 else
   # 不发任何上游请求：只问扩展「你看到的数据源是什么」。
-  SELFCHECK=$(node --env-file="$ROOT_DIR/.env" --input-type=module -e '
-import { createExtensionRuntime } from "@earendil-works/pi-coding-agent";
-import { loadExtensions } from "./node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js";
-const r = await loadExtensions([".pi/extensions/xhs-source.ts"], process.cwd(), undefined, createExtensionRuntime());
-const tools = [...r.extensions[0].tools.values()].map((t) => t.definition ?? t);
-const status = await tools.find((t) => t.name === "xhs_source_status").execute("deploy-check", {});
-console.log(`errors=${r.errors.length} ${status.content[0].text}`);
-')
-  echo "  $SELFCHECK"
-  case "$SELFCHECK" in
-    *"errors=0"*) : ;;
-    *) fail "扩展加载失败（errors 非 0），先修好再重启。" ;;
-  esac
-  case "$SELFCHECK" in
-    *'"mode":"api"'*'"configured":true'*) : ;;
-    *) fail "扩展没读到 api 模式的凭据——重启也不会生效，回去看第 2 步。" ;;
-  esac
+  node "$ROOT_DIR/scripts/preflight.mjs" --extension --env-file="$ROOT_DIR/.env" \
+    || fail "扩展自检没过，先修好再重启。"
 fi
+
+# 怎么重启：自定义命令 > systemd 单元 > nohup（要显式开关）。
+# nohup 兜底必须显式打开：它会起一个 systemd 之外的服务，:3000 被它占着时后续
+# `systemctl start` 会 EADDRINUSE，而健康检查照样返回 200—— 于是一次「成功」的
+# 部署其实还在跑旧代码。宁可停下，也不制造这种假绿。
+restart_kind() {
+  if [ -n "${DEPLOY_RESTART_CMD:-}" ]; then echo custom
+  elif [ -n "${DEPLOY_SERVICE:-}" ]; then echo service
+  elif [ "${DEPLOY_ALLOW_NOHUP:-0}" = "1" ]; then echo nohup
+  else echo none
+  fi
+}
 
 if [ "$DRY_RUN" = "1" ]; then
   printf '\n=== (dry-run) 跳过重启。真实执行时会：\n'
-  if [ -n "${DEPLOY_RESTART_CMD:-}" ]; then echo "  $DEPLOY_RESTART_CMD"
-  elif [ -n "${DEPLOY_SERVICE:-}" ]; then echo "  sudo systemctl restart $DEPLOY_SERVICE"
-  else echo "  pkill -f next-server && nohup npm run start >> .local-data/server.log 2>&1 &"
-  fi
+  case "$(restart_kind)" in
+    custom) echo "  $DEPLOY_RESTART_CMD" ;;
+    service) echo "  sudo systemctl restart $DEPLOY_SERVICE" ;;
+    nohup) echo "  pkill -f next-server && nohup npm run start >> .local-data/server.log 2>&1 &" ;;
+    none) echo "  (没有可用的重启方式——真实执行会在这里停下，让你设 DEPLOY_SERVICE / DEPLOY_RESTART_CMD / DEPLOY_ALLOW_NOHUP)" ;;
+  esac
   printf '\n✓ 体检通过，没有任何改动。\n'
   exit 0
 fi
 
 step "重启服务"
-if [ -n "${DEPLOY_RESTART_CMD:-}" ]; then
-  sh -c "$DEPLOY_RESTART_CMD"
-elif [ -n "${DEPLOY_SERVICE:-}" ]; then
-  sudo systemctl restart "$DEPLOY_SERVICE"
-else
-  # 兜底：没有 systemd 的机器（本机开发也走这条）。.env 只在启动时读，所以必须重启。
-  pkill -f next-server || true
-  nohup npm run start >> "$ROOT_DIR/.local-data/server.log" 2>&1 &
-  echo "  已用 nohup 启动（日志 .local-data/server.log）。生产环境建议改用 DEPLOY_SERVICE=… 交给 systemd。"
-fi
+case "$(restart_kind)" in
+  custom) sh -c "$DEPLOY_RESTART_CMD" ;;
+  service) sudo systemctl restart "$DEPLOY_SERVICE" ;;
+  nohup)
+    pkill -f next-server || true
+    nohup npm run start >> "$ROOT_DIR/.local-data/server.log" 2>&1 &
+    echo "  已用 nohup 启动（日志 .local-data/server.log）。"
+    ;;
+  none)
+    fail "不知道该怎么重启。生产环境设 DEPLOY_SERVICE=<systemd 单元名>；本机开发想用 nohup 兜底就设 DEPLOY_ALLOW_NOHUP=1。"
+    ;;
+esac
 
 printf '  等待 :%s 就绪… ' "$PORT"
 if curl -sf --retry 25 --retry-delay 1 --retry-connrefused -o /dev/null "http://localhost:$PORT/"; then

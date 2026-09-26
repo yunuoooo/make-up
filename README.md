@@ -84,7 +84,19 @@ npm run dev            # http://localhost:3000
 | `npm run typecheck` | 类型检查 |
 | `npm test` / `npm run test:l1` | 快速测试 |
 | `npm run test:l3` | 端到端测试（会跑真实 pi 进程，需 `RUN_L3_E2E=1`） |
-| `./scripts/deploy.sh` | 部署（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启）；先跑 `DEPLOY_DRY_RUN=1 ./scripts/deploy.sh` 体检 |
+| `./scripts/deploy.sh` | **本机/应急**部署（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启）；先跑 `DEPLOY_DRY_RUN=1 ./scripts/deploy.sh` 体检 |
+
+## 部署
+
+**生产发布 = push 到 `main`。** GitHub Actions 在 CI 里构建，只把产物 rsync 到服务器；服务器不构建、不装依赖，只做「换目录 + 重启」，健康检查不过自动回滚。细节见 [09-26 CI/CD 部署](./docs/specs/09-26-cicd-deploy.md)。
+
+```sh
+gh workflow run deploy.yml --ref main           # 重发一次
+gh workflow run deploy.yml -f ref=<旧 commit>   # 回滚到某个版本
+ssh admin@47.90.149.155 'sh /srv/make-up-shared/deploy-remote.sh --rollback'   # 就地回滚上一版
+```
+
+两条别踩的线：`/srv/make-up` 这个路径**一个字都不能改**（会话目录名按 cwd 的绝对路径生成，换路径等于所有历史对话静默消失）；服务**只能单实例**（会话锁在进程内），所以重启有约 5 秒中断，别在有人提问时发版。
 
 ## 已知限制
 

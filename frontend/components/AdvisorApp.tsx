@@ -115,7 +115,7 @@ export function AdvisorApp() {
             <div className="grid size-10 place-items-center rounded-[14px] bg-[#ef7196] text-lg font-semibold text-white shadow-[0_8px_24px_rgba(239,113,150,.28)]">妆</div>
             <div>
               <p className="text-[15px] font-semibold tracking-[.08em]">妆迹</p>
-              <p className="mt-0.5 text-[11px] tracking-[.2em] text-white/45">LOOKTRACE</p>
+              <p className="mt-0.5 text-[11px] tracking-[.2em] text-white/45">LOOKTRACE · CI 部署验证</p>
             </div>
           </div>
           <Button
