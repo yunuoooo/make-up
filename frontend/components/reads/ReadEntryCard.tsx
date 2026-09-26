@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, Search, Video } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, ChevronRight, Search, Video } from "lucide-react";
 import { NoteCard } from "./NoteCard";
 import { asList, asRecord, asText, timeLabel } from "@/frontend/lib/reads";
 import type { XhsReadEntry } from "@/lib/pi/session-reads";
@@ -30,18 +31,37 @@ function Refusal({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
-/** 搜索返回的是**摘要**（截断预览），只做紧凑列表——正文要走详情。 */
+/**
+ * 搜索返回的是**摘要**（截断预览），只做紧凑列表——正文要走详情。
+ *
+ * **默认折起来**：一页 20 条，摊开就是四屏，会把真正要核对的「详情」挤到下面去。
+ * 搜索结果是「它为什么挑这几篇」的旁证，想看再点开。
+ */
 function SearchResults({ payload }: { payload: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
   const notes = asList(payload.notes).map(asRecord).filter((note): note is Record<string, unknown> => note !== null);
   if (!notes.length) return <p className="text-xs text-muted-foreground">这一页没有结果。</p>;
+  const videos = notes.filter((note) => asText(note.noteType) === "video").length;
   return (
-    <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-      {notes.map((note, index) => (
-        <li key={`${asText(note.noteId)}-${index}`} className="bg-card">
-          <NoteCard note={note} compact />
-        </li>
-      ))}
-    </ul>
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((previous) => !previous)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-muted-foreground hover:bg-[#f7f4f2]"
+      >
+        <ChevronRight className={`size-3 transition ${open ? "rotate-90" : ""}`} />
+        {open ? "收起" : "展开"}这 {notes.length} 条（{videos} 条视频、{notes.length - videos} 条图文）
+      </button>
+      {open ? (
+        <ul className="divide-y divide-border border-t border-border">
+          {notes.map((note, index) => (
+            <li key={`${asText(note.noteId)}-${index}`}>
+              <NoteCard note={note} compact />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

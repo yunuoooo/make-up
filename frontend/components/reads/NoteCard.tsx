@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Copy, ImageOff } from "lucide-react";
+import { Copy, ImageOff, Images, Video } from "lucide-react";
 import {
   asNumber,
   asRecord,
@@ -90,6 +90,31 @@ function Transcript({ transcript }: { transcript: Record<string, unknown> }) {
   );
 }
 
+/**
+ * 笔记类型徽章。上游的值是 `video` / `normal`，**这两个词对看的人没有意义**——
+ * 所以换成中文 + 图标 + 对比色，一眼能分出视频和图文（这是排查时第一个要看的）。
+ */
+function TypeBadge({ noteType }: { noteType: string }) {
+  if (!noteType) return null;
+  const isVideo = noteType === "video";
+  const isImage = noteType === "normal";
+  const label = isVideo ? "视频" : isImage ? "图文" : noteType;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        isVideo
+          ? "bg-[#fae8ee] text-[#a23d5d]"
+          : isImage
+            ? "bg-[#eef1ea] text-[#4d6249]"
+            : "bg-[#f1ece9] text-foreground/70"
+      }`}
+    >
+      {isVideo ? <Video className="size-3" /> : isImage ? <Images className="size-3" /> : null}
+      {label}
+    </span>
+  );
+}
+
 export function NoteCard({ note, compact = false }: { note: Record<string, unknown>; compact?: boolean }) {
   const title = asText(note.title);
   const author = asText(note.authorName);
@@ -102,7 +127,9 @@ export function NoteCard({ note, compact = false }: { note: Record<string, unkno
   const stats = statItems(note.stats);
   const duration = durationLabel(asNumber(note.durationSeconds));
   const transcript = asRecord(note.transcript);
+  const transcriptLines = transcript ? splitTranscript(transcript.text).length : 0;
   const truncated = note.truncated === true;
+  const isVideo = noteType === "video";
 
   return (
     <div className="rounded-xl border border-border bg-card">
@@ -120,18 +147,30 @@ export function NoteCard({ note, compact = false }: { note: Record<string, unkno
         )}
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold text-foreground" title={title}>
-            {title || <span className="text-muted-foreground">（没有标题）</span>}
-          </h3>
+          {/* 类型与字幕状态放在标题旁边：这两个是排查时最先要看的，不该埋在正文后面。 */}
+          <div className="flex items-start gap-2">
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={title}>
+              {title || <span className="text-muted-foreground">（没有标题）</span>}
+            </h3>
+            {noteType ? <TypeBadge noteType={noteType} /> : null}
+            {/* 字幕状态只在**详情**卡片上显示。搜索条目从来不带 `transcript` 字段，
+                在这儿断言「没有字幕」是错的——那些笔记还没被打开过。 */}
+            {!compact && noteType === "video" ? (
+              transcriptLines > 0 ? (
+                <span className="shrink-0 rounded-full bg-[#eef1ea] px-2 py-0.5 text-[11px] font-medium text-[#4d6249]">
+                  字幕 {transcriptLines} 条
+                </span>
+              ) : (
+                <span className="shrink-0 rounded-full bg-[#f5e5d8] px-2 py-0.5 text-[11px] font-medium text-[#8a4f22]">
+                  没有字幕
+                </span>
+              )
+            ) : null}
+          </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             {author ? <span>{author}</span> : null}
             {postedAt ? <span>{postedAt}</span> : null}
             {ipLocation ? <span>{ipLocation}</span> : null}
-            {noteType ? (
-              <span className="rounded-full bg-[#f1ece9] px-2 py-0.5 text-[10px] uppercase text-foreground/70">
-                {noteType}
-              </span>
-            ) : null}
             {duration ? <span className="font-mono">{duration}</span> : null}
             {stats.map((item) => (
               <span key={item.label}>
@@ -151,18 +190,22 @@ export function NoteCard({ note, compact = false }: { note: Record<string, unkno
         </div>
       </div>
 
-      {!compact && body ? (
-        <div className="border-t border-border px-4 py-3">
-          <h4 className="text-xs font-semibold tracking-wide text-foreground">
-            正文{truncated ? <span className="ml-2 font-normal text-muted-foreground">（已截断）</span> : null}
-          </h4>
-          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-6 text-foreground/85">{body}</p>
-        </div>
-      ) : null}
-
+      {/* 视频的**口播字幕排在前面**：那才是它的内容，文案只是标题加一串话题。
+          之前把字幕放在文案后面，看起来就像「没有字幕」。 */}
       {!compact && transcript ? (
         <div className="border-t border-border px-4 pb-4">
           <Transcript transcript={transcript} />
+        </div>
+      ) : null}
+
+      {!compact && body ? (
+        <div className="border-t border-border px-4 py-3">
+          <h4 className="text-xs font-semibold tracking-wide text-foreground">
+            {/* 视频的 desc 是文案（标题 + 话题），不是讲解内容——叫「正文」会让人以为这就是全部。 */}
+            {isVideo ? "视频文案" : "正文"}
+            {truncated ? <span className="ml-2 font-normal text-muted-foreground">（已截断）</span> : null}
+          </h4>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-6 text-foreground/85">{body}</p>
         </div>
       ) : null}
 
