@@ -71,12 +71,14 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 
 **形状比图文端点少一层**——这是本端点最容易踩的一处：
 
-| 端点 | 笔记本体路径 |
-| --- | --- |
-| 图文 `get_image_note_detail` | `data.data[0].note_list[0]` |
-| 视频 `get_video_note_detail` | `data.data.data[0]` |
+| 端点 | 笔记本体路径 | 差别 |
+| --- | --- | --- |
+| 图文 `get_image_note_detail` | `data.data[0].note_list[0]` | 多一层 `note_list` |
+| 视频 `get_video_note_detail` | `data.data[0]` | **数组元素直接就是笔记** |
 
-`lib/xhs/tikhub.ts` 的 `pickDetailEntry` 只认 `note_list`（以及 `note` 包装与平铺），**没有 `.data` 数组这一层**，所以视频响应喂进去会一路走到「有数据但读不出内容」并抛 `SHAPE_DRIFT`。两个端点各自一个解包函数，不要复用。
+⚠️ **2026-09-26 复核改正**：视频这一格曾写作 `data.data.data[0]`（多一层 `.data`）。实调的真实响应是 `body.data.data[0]`——数组元素就是笔记，**没有**再多一层。同一个数组里 `[1]`、`[2]` 是推荐笔记（有 `id`/`title`/`*_count`，但没有 `video_info_v2`），所以**必须取 `[0]`**。
+
+两个端点各自一个解包函数，不要复用——但要知道**复用的后果不是报错**：把视频响应喂给只认 `note_list` 的 `pickDetailEntry`，它会走「是数组就取 `[0]`」那条分支，把笔记**碰巧**映射出来（2026-09-26 实测确认）。也就是说**用错解包函数不会当场炸**，只会在上游把推荐笔记排到前面、或图文端点换了包装时静默给错笔记——这比抛 `SHAPE_DRIFT` 更危险，所以分流要靠**调用前**就知道的类型，不要靠「形状看起来能读」。
 
 **实测字段表**（2026-09-25 真实调用，样本是一条 418 秒的妆容教程）：
 
@@ -86,8 +88,9 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 | stream 项字段 | 同上数组的每一项 | `stream_type` / `master_url` / `backup_urls[]` / `width` / `height` / `weight` / `default_stream` / `duration` / `video_codec` / `audio_bitrate` |
 | **空 codec 是空数组** | 同上 | 样本里 `av1`、`h266` 都是 0 项。**不过滤空数组会挑到 `undefined`** |
 | **字幕** | `video_info_v2.media.video.subtitles.{source,zh-CN,en-US}[].url` | 是 **`.srt`**，带时间戳。这就是视频理解链路的信息来源 |
-| 封面 | `image.first_frame` / `image.thumbnail` | |
-| 摘要 | `md5` | 可做缓存键（**不要缓存 URL**，见第 7.6 节） |
+| 字幕数组项的字段 | 同上数组的每一项 | `language` / `url` / `type` / `format`（2026-09-26 实测）。**语言仍以键名为准**，不要读 `language` |
+| 封面 | `video_info_v2.image.first_frame` → `.thumbnail` → `.thumbnail_dim` | 样本只出现后两个；`images_list[0]` 通常也是这张封面 |
+| 摘要 | `video_info_v2.media.video.md5` | 可做缓存键（**不要缓存 URL**，见第 7.6 节） |
 | **人声** | `video_info_v2.media.video.opaque1.hasHumanVoice` | **是字符串不是布尔**：`"true"` / `"false"`（**必须按字符串比**，`=== true` 永远不成立）。没有人声 = 没有口播价值（纯音乐 + 字幕贴纸那种），分流时直接过掉，不必再取字幕 |
 | 人声置信度 | `…opaque1.audioClsInfo` | **JSON 字符串**，`JSON.parse` 后取 `.speech_ratio`（0–1）。`hasHumanVoice` 的连续版本，做阈值判断时更有用；解析失败按 null 处理，**不要让它把整篇带崩** |
 | 是否支持字幕 | `…opaque1.isSupportSubtitle` | 与「实际有没有字幕轨道」不是一回事——**以 `subtitles` 里有没有非空数组为准**，这个只作参考 |
@@ -104,7 +107,9 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 
 映射层统一成**秒**，并挑一个口径写死（建议 `media.video.duration`，它和播放地址同一棵树），别三处混用。
 
-**直链是 `http://` 不是 `https://`**——与图片那次同样的坑，`normalizeUrl`（`lib/xhs/tikhub.ts:90-97`）已经在处理，复用即可。**字幕地址同样是 `http://`**，取之前要先升级。
+**播放直链是 `http://` 不是 `https://`**——与图片那次同样的坑，`normalizeUrl`（`lib/xhs/tikhub.ts`）已经在处理，复用即可。
+
+⚠️ **字幕地址不走同一条规则**（2026-09-26 复核改正）：实测它**已经是 `https://`**，域名是 **`sns-subtitle-s8.rednotecdn.com`**——**不在 `xhscdn.com` 上**。白名单如果只写 `xhscdn.com`，这条链路会永远返回 `transcript-failed`（规格第 6.1 节原文如此，已在实现里改正为两个域名都收）。仍然统一过一遍 `normalizeUrl`（协议相对与 http 的历史形态都还在别处出现），但别指望靠它拿到正确域名。
 
 **`.srt` 的格式（2026-09-25 抽样脚本实测，标准 SRT）**：
 
@@ -204,7 +209,7 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 ## 7. 已采样的事实与仍未确认的项
 
 1. **搜索响应形状（已采样，2026-09-24 实调）**：`data.data.items[].note{…}`，笔记字段**平铺**在 `note` 里——`id` / `title` / `desc`（截断预览）/ `type` / `user.nickname` / `images_list[]` / `timestamp` / `liked_count` 等。**包装键是 `note`，不是 `note_card`**：这一点猜错时 20 条会被全部丢掉，而结果与「真的没有结果」长得一模一样，所以映射层**先认 `note`、再认 `note_card` / 平铺**，并且在「有条目却一条都读不出来」时报出上游字段名。
-   - 这一页 20 条**全是 `normal`**：`note_type=普通笔记` 的服务端过滤确实生效（客户端的视频兜底过滤因此是双保险）。
+   - 这一页 20 条**全是 `normal`**：当时固定传 `note_type=普通笔记`，服务端过滤确实生效（客户端因此还加了一道视频兜底过滤）。**两道过滤 2026-09-26 都已删除**：现在不传 `note_type`，同一页会同时出现 `normal` 与 `video`（实测 `{"video":15,"normal":5}` 这种分布）。
    - **搜索条目里也带 `xsec_token`**：映射层只取白名单字段，测试钉住「不许漏出去」。
 2. **分页凭据的位置（已采样）**：`search_id` 与 `search_session_id` 在内层顶层；同层还有 `page` / `next_page`，`hasMore` 因此直接看 `next_page`。
 3. **单价、套餐、并发与每日额度**：供应商未公布，要登录控制台看；`429` 的触发阈值未知。集成本文第 4 节的成本口径因此只有调用次数，没有金额。
@@ -212,7 +217,8 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 5. **图文笔记是否也会命中「只有封面」的分支**：文档说这是视频笔记的限制，未在图文笔记上验证过。
 6. ~~视频端点路径的完整写法~~ → **已确认**：`/api/v1/xiaohongshu/app_v2/get_video_note_detail`（抽样脚本第 53 行的真实调用）。
 7. **没有任何字幕的视频长什么样**：`subtitles` 是整体缺失，还是语言键都在但数组为空？抽样脚本对两者都做了防御（`Array.isArray(subs[k]) && subs[k].length > 0`），所以**它没证明**实际是哪种。这决定降级分支怎么写，值得优先补一次。
-   - 字幕数组项除 `url` 外还有什么字段（`lang` / `format`？）同样未核。语言来自 `subtitles` 的**键名**，不是数组项——这一点是确认的。
+   - 实现上**两种都当 `no-transcript` 处理**（按「键缺失 / 数组为空」都算没有轨道），所以这条不影响正确性，只影响文案精度。
+   - ~~字幕数组项除 `url` 外还有什么字段~~ → **2026-09-26 已核**：`language` / `url` / `type` / `format`。语言仍取 `subtitles` 的**键名**。
 8. **`.srt` 的体量**：样本 6053 字符。长视频（十几分钟）会到多大、`XHS_API_TRANSCRIPT_LIMIT` 的 20000 够不够，未测。格式与解析口径本身已实测确认（第 2.3 节）。
 
 ## 8. 映射到内部类型
@@ -240,13 +246,14 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 | `noteId` | `.id` | **缺则用请求参数兜底**（同图文，线上事故的教训） |
 | `title` | `.title` | 压缩空白 |
 | `noteType` | `.type` | 这里是 `video` |
-| `durationSeconds` | `media.video.duration` | **统一成秒**；三处时长口径见第 2.3 节 |
-| `cover` | `image.first_frame` → `image.thumbnail` | 沿用 `normalizeUrl`（http→https） |
-| `playUrl` | `video_info_v2.media.stream.<codec>[].master_url` | **必须过滤空的 codec 数组**，否则挑到 `undefined` |
+| `durationSeconds` | `media.video.duration` | **统一成秒**；三处时长口径见第 2.3 节（样本里 `capa.duration` 与它差 1 秒，别混用） |
+| `cover` | `video_info_v2.image.first_frame` → `.thumbnail` → `.thumbnail_dim` | 沿用 `normalizeUrl`（http→https）；`images_list[0]` 为空时才用 |
+| `text` / `tags` / `user` / `stats` | `.desc` / `.hash_tag[].name` / `.user.nickname` / 四个 `*_count` | **2026-09-26 实测确认与图文端点同名同形**（原「未确认」项已核） |
+| ~~`playUrl`~~ | `video_info_v2.media.stream.<codec>[].master_url` | **刻意不映射**：没有消费者，且是带签名的 URL——不进工具输出、日志、SSE、trace（视频理解规格第 4.1 节）。要取时**必须过滤空的 codec 数组**（样本里 `av1`、`h266` 都是 0 项），否则挑到 `undefined` |
 | `subtitles` | `video_info_v2.media.video.subtitles.{source,zh-CN,en-US}[].url` | 语言来自**键名**。取第一个非空数组，顺序 **`source` → `zh-CN` → 其余**（`source` 是原始语言轨；实测脚本用的就是这个顺序） |
 | `md5` | `.md5` | 缓存键 |
 
-**未确认**：视频详情里 `desc`（正文）、`hash_tag`、`user`、`images_list`、`*_count` 是否与图文端点同名同形。2026-09-25 那次实测的重点是播放地址与字幕，没核这些。落地时先在真实响应上核一遍，**不要照图文端点推**。
+~~**未确认**：视频详情里 `desc`（正文）、`hash_tag`、`user`、`images_list`、`*_count` 是否与图文端点同名同形。~~ → **2026-09-26 已核**：同名同形（见上表）。注意视频的 `desc` 通常很短（就是标题加一串话题），真正的讲解在字幕里。
 
 对外形状沿用集成本文第 3.2/3.3 节的受控 JSON——**技能与工具层不因换供应商改动**。
 

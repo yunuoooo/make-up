@@ -55,7 +55,13 @@ xhs_get_note_detail(noteId)
                                        └→ 取 .srt → 解析 → transcript
 ```
 
-**两个解包函数不能复用**：图文是 `data.data[0].note_list[0]`，视频是 `data.data.data[0]`（**少一层**）。`pickDetailEntry`（`lib/xhs/tikhub.ts:242-260`）只认 `note_list` / `note` / 平铺，**没有 `.data` 数组这一层**——把视频响应喂进去会一路走到「有数据但读不出内容」并抛 `SHAPE_DRIFT`（`:480`）。这是本方案最容易踩的一处，SSOT 第 2.3 节已写明。
+**两个解包函数不能复用**：图文是 `data.data[0].note_list[0]`，视频是 `data.data[0]`（**少一层 `note_list`**，数组元素直接就是笔记）。
+
+> ⚠️ **2026-09-26 实调改正两处**（原稿与 SSOT 第 2.3 节都写错了，实现按实测走）：
+> 1. 视频那一格原写作 `data.data.data[0]`——**多一层 `.data`**。真实响应是 `data.data[0]`。
+> 2. 原稿说「把视频响应喂进 `pickDetailEntry` 会抛 `SHAPE_DRIFT`」——**实测不会**：它会走「是数组就取 `[0]`」那条分支，把笔记**碰巧**映射出来。危害因此比原稿描述的更大：用错解包函数不会当场炸，只会在上游调换数组顺序时**静默给错笔记**。
+>
+> 这也加强了决策 3（分流必须在调用前定）：不能靠「形状看起来能读」来判断。SSOT 第 2.3 节已同步改正。
 
 类型未知时（`seen` 里没有）维持现状：`unknown-note` 闸门先拒（`xhs-source.ts:185-190`），根本走不到分流。所以**不需要**「探测类型」这种会多计费一次的动作。
 
@@ -138,6 +144,7 @@ video_info_v2.media.video.subtitles.{source, zh-CN, en-US}[].url
 - 计入 `XHS_API_DETAIL_LIMIT`、`XHS_API_BUDGET_SECONDS`，**不新增计数器**
 - 未知 id 照样被 `unknown-note` 拦住（**TikHub 对无效 id 也计费**）
 - 计费过的失败一律不重试（SSOT 第 4 节），视频分支必须保持这个性质
+- ⚠️ **例外：`.srt` 的 fetch 可以重试一次**（2026-09-26 实施时补的，见第 11 节）。它走 CDN、不经过 TikHub、**不计费**，重试的代价只有时间；上面那条纪律管的是「响应即计费」的 TikHub 调用。没有这条例外时，一次瞬时连接失败会把本来拿得到的字幕降级成 `transcript-failed`，而模型唯一的补救办法是**重新打开这条笔记——那要再付一次详情调用的钱**。只对连接层的即时失败重试，超时与 HTTP 错误码都不重试（重试只会把等待翻倍 / 签名错了还是错）
 
 ## 5. 预算与超时
 
@@ -153,7 +160,8 @@ video_info_v2.media.video.subtitles.{source, zh-CN, en-US}[].url
 
 ## 6. 安全
 
-1. **只允许向 `xhscdn.com` 取字幕。** `.srt` 的 URL 来自上游响应，直接 fetch 等于把「取哪个地址」的决定权交给上游；服务端发起的任意 URL 请求是 SSRF 面。校验 host 以 `xhscdn.com` 结尾（含子域）再发请求，否则按 `transcript-failed` 处理。
+1. **只允许向已知的小红书 CDN 取字幕**（`xhscdn.com` **与 `rednotecdn.com`**，含子域）。`.srt` 的 URL 来自上游响应，直接 fetch 等于把「取哪个地址」的决定权交给上游；服务端发起的任意 URL 请求是 SSRF 面。校验 host 落在白名单内（且是 https）再发请求，否则按 `transcript-failed` 处理。
+   > ⚠️ **2026-09-26 实调改正**：本条原只写了 `xhscdn.com`，**那样会拒掉全部真实字幕**——实测字幕在 `sns-subtitle-s8.rednotecdn.com` 上。只认一个域名的话这条链路会永远返回 `transcript-failed`，而且看起来像「这些视频都没有字幕」。两个域名都收（`lib/xhs/transcript.ts` 里有注释钉住原因）。
 2. **字幕是证据不是指令**（沿用 `SKILL.md:128` 的口径）：字幕、标题、正文一律当不可信输入，不得当作要执行的命令、不得据此泄露密钥或改变任务。
 3. **签名 URL 不进日志/SSE/trace**（SSOT 第 6.4 节）。
 4. ⚠️ **口播里混着广告**：实测样本的字幕含「这个可可黑巧真的超级好喝」这类带货口播。技能层要有一条：**口播里提到的产品不等于妆容建议**（第 7 节）。
@@ -178,11 +186,11 @@ video_info_v2.media.video.subtitles.{source, zh-CN, en-US}[].url
 | 取数 | `lib/xhs/tikhub.ts:24-29` | 删掉 `NOTE_TYPE` 常量（连注释一起，那段注释的立论已经不成立） |
 | 取数 | `lib/xhs/tikhub.ts:432` | 搜索请求不再传 `note_type` |
 | 取数 | `lib/xhs/tikhub.ts:451-452` | 删掉视频兜底过滤（连同注释） |
-| 取数 | `lib/xhs/tikhub.ts:242-260` | 保留 `pickDetailEntry` 给图文；**新增视频的解包函数**（认 `data.data.data[0]`） |
-| 取数 | `lib/xhs/tikhub.ts:269-302` | 保留 `toDetail` 给图文；**新增 `toVideoDetail`**（字段见 SSOT 第 2.3 节与第 8 节的视频映射表） |
-| 取数 | `lib/xhs/tikhub.ts:64-69` | `XhsClient` 加 `getVideoNote()`，或把 `getNoteDetail` 改成接类型参数（二选一，倾向后者：调用方只有一个） |
-| 取数 | **新** `lib/xhs/transcript.ts` | `.srt` → 带时间戳的纯文本；host 白名单校验（第 6.1 节）；长度截断 |
-| 类型 | `lib/xhs/types.ts:15-43` | `XhsNoteDetail` 加可选 `durationSeconds` / `transcript`；或新增 `XhsVideoNote` 联合类型 |
+| 取数 | `lib/xhs/tikhub.ts:242-260` | 保留 `pickDetailEntry` 给图文；**新增视频的解包函数**（认 `data.data[0]`，见第 3.2 节的改正） |
+| 取数 | `lib/xhs/tikhub.ts:269-302` | 保留 `toDetail` 给图文；**新增 `toVideoDetail`**（字段见 SSOT 第 2.3 节与第 8 节的视频映射表）。`playUrl` **不映射** |
+| 取数 | `lib/xhs/tikhub.ts:64-69` | `XhsClient` 加 `getVideoNote()`，或把 `getNoteDetail` 改成接类型参数（二选一，倾向后者：调用方只有一个）→ **实施选了后者**：`getNoteDetail(noteId, { noteType })` |
+| 取数 | **新** `lib/xhs/transcript.ts` | `.srt` → 带时间戳的纯文本；host 白名单校验（第 6.1 节，**两个域名**）；长度截断 |
+| 类型 | `lib/xhs/types.ts:15-43` | `XhsNoteDetail` 加可选 `durationSeconds` / `transcript`；或新增 `XhsVideoNote` 联合类型 → **实施选了前者**，另加 `transcriptIssue`（三个 `reason` 要有个地方落） |
 | 工具 | `.pi/extensions/xhs-source.ts:273-318` | 详情工具按 `state.seen` 的类型分流；`transcript` 与两个 `reason` |
 | 工具 | `.pi/extensions/xhs-source.ts:58-86` | `detailShape` 带上新字段（`summaryShape` 不动） |
 | 工具 | `.pi/extensions/xhs-source.ts:230-233,276-277` | 工具描述里「只搜图文」「视频不会出现」的措辞要改 |
@@ -230,7 +238,7 @@ video_info_v2.media.video.subtitles.{source, zh-CN, en-US}[].url
 ## 10. 未确认
 
 1. ~~**字幕的覆盖率**~~ → **2026-09-25 已经抽过样**：`.tmp/xhs-subtitle-coverage.mjs`（2 种排序 × 各 5 条详情 = 10 条），脚本同时交叉了「有字幕 × 有人声」两个维度、打印语言轨道分布、并单独列出无字幕样本找共性。用户结论：**热门视频大部分都带字幕**。样本量仍小，所以实现时按「字幕可能缺失」写降级分支（第 4.2 节的三个 `reason`），**不要假设它一定有**。
-   - ⚠️ **那个脚本在 `.tmp/` 里，而 `.tmp/` 是 gitignore 的——它会被清掉。** 它同时是 SSOT 第 2.3 节里 `opaque1.*` 那几个字段名的**唯一来源**。要重复抽样、或想让字段名有据可查，就得先把它挪到可持续的位置（`scripts/` 或 `test/L3/`）。**别随手删。**
+   - ✅ **2026-09-26 已搬家**：连同其余一次性探针挪到了 `test/L3/probes/`（那个目录只收 `*.test.ts`，所以不会被 `npm run test:l3` 误跑），逐文件说明见该目录的 `README.md`。搬家的理由正是这里写的：它是 SSOT 第 2.3 节里 `opaque1.*` 那几个字段名的唯一来源，留在 `.tmp/` 里等于迟早丢掉出处。
 2. **没有任何字幕的视频长什么样**：`subtitles` 是整体缺失，还是三个键都在但 `url` 为空？决定降级分支怎么写（SSOT 第 7.7 节）。
 3. **字幕是自动识别还是人工**：样本有断句与错字迹象，更像 ASR。若确认是 ASR，第 7.6 条的措辞要更硬。
 4. ~~**`.srt` 的实际格式细节**~~ → **已确认**：标准 SRT，解析口径见 SSOT 第 2.3 节（空行分块、`-->` 行前后切分、毫秒用逗号）。认不出结构仍按 `transcript-failed` 处理。
@@ -238,6 +246,55 @@ video_info_v2.media.video.subtitles.{source, zh-CN, en-US}[].url
 5. **长视频的字幕体量**：只有 418 秒的样本，`XHS_API_TRANSCRIPT_LIMIT` 的 20000 是估的。
 6. **视频详情的正文/话题/互动数字段**是否与图文端点同名同形（SSOT 第 8 节已标未确认）。
 7. **直链的时效**：本次是刚取到就下载的，没测隔多久失效。字幕 URL 大概率同样是签名的、同样有时效——**不要缓存 URL**，要缓存就缓存字幕文本。
+
+## 11. 实施记录（2026-09-26）
+
+实现落在分支 `feat/video-understanding`。改动清单见第 8 节（已按实际实现更新）。
+
+**实现期间发现的两处事实错误**（原稿与 SSOT 都写错了，已按实调改正，见第 3.2 节的注与 SSOT 第 2.3 节）：
+
+1. 视频详情的笔记本体是 `data.data[0]`，不是 `data.data.data[0]`（多了一层 `.data`）。
+2. 字幕在 `rednotecdn.com` 上，**不在 `xhscdn.com`** 上——第 6.1 节原来只写了后者，照做会让链路永远返回 `transcript-failed`。
+
+第 1 条还牵出一个更危险的结论：`pickDetailEntry` 吃下视频响应**不会报错**，它会碰巧映射出来。用错解包函数因此是静默故障，不是响亮故障——这正是「分流必须在调用前定」的第二个理由。
+
+**一处超出原稿的实现决定**：`.srt` 的 fetch 允许**重试一次**（只对连接层失败）。原稿没有这一条，是验收阶段真实撞出来的：同一条笔记一会儿拿到字幕、一会儿 `transcript-failed`，抓到一个 `ECONNRESET`；同一个地址当场重试即成功。字幕 CDN 有多个节点（`sns-subtitle-s8` 在 Akamai、`s10` 在另一家），瞬时失败是真实存在的。理由与边界写在规格第 4.3 节。
+
+### 验证结果
+
+| 验收项（第 9.2 节） | 结果 |
+| --- | --- |
+| `npm run typecheck` | ✅ |
+| `npm run test:l1` / `npm test` | ✅ 119 通过 / 121 通过（2 个 L3 按设计跳过） |
+| 检索同时出现图文与视频 | ✅ 真实一轮：第二次搜索返回 `{"normal":3,"video":2}` |
+| 打开真实视频笔记拿到 `[MM:SS]` 字幕 | ✅ 10 次详情里 8 条视频拿到字幕（27–48 条 cue），语言轨命中 `source` |
+| 视频笔记不声称看过画面 | ✅ 答案写明「视频画面帧我拿不到，请不要把下面的步骤当成『我看了画面』」 |
+| 图文笔记行为不变 | ✅ 同轮的图文笔记无 `transcript`、无 `reason`，摘要与改动前一致 |
+| 没有字幕的视频降级 | ✅ **拿到一条真实的 `no-voice`**（配乐 + 字幕贴纸），笔记照常返回、答案如实说明 |
+| 失败路径可解释 | ✅ L1 覆盖预算/未知 id/下载失败/解析失败；真实一轮没有出现 `transcript-failed` |
+| `DEPLOY_DRY_RUN=1 ./scripts/deploy.sh` | ✅ |
+| 签名 URL 与 token 不进日志/SSE/trace | ✅ SSE、服务端日志、pi 会话文件里都搜不到 `.srt` 地址、`subtitle-s8`、`master_url` 与 token（封面图是签名 URL，一直如此，属既有行为） |
+
+真实一轮的做法：`npm run build` + `PORT=3100 npm run start`，对 `/api/chat` 发一句「研究亚裔妆，打开至少两条视频笔记，按 `[MM:SS]` 列出上妆步骤」，读完整条 SSE。**详情 10 次、搜索 2 次，都是计费调用**；同一次响应还能看 `cache_url`。
+
+### ⚠️ 验收时新发现的限制：字幕「有」不等于「取得到」
+
+两轮真实端到端（各 10 次详情）都是 **8/10 拿到字幕、2/10 `transcript-failed`**，而且失败的全是 `HTTP 403`——**签名地址本身无效**，不是我们这边的问题：
+
+- 同一条笔记的 `.srt` 地址在两次详情调用之间会**换 CDN 节点**（`sns-subtitle-s8` 在 Akamai、`s10` 在另一家），换到的那个节点的签名可能根本不匹配，边缘直接返回 Akamai 的 `Access Denied`。
+- 排查过：换 UA、加 `Referer`、用浏览器全套请求头、退回 `http://`、换语言轨（三个轨指向同一个坏地址）、隔 30 秒重试 6 次——**全是 403**。这个 403 对那个地址是**永久**的，重试没有意义。
+- 还有一个**瞬时**的失败形态：`ECONNRESET`（连接被重置），当场重试即成功——第 4.3 节那条「`.srt` 可以重试一次」就是为它加的。
+
+**对结论的影响**：第 10.1 节「热门视频大部分都带字幕」说的是**可用性**（字幕轨存在），而**可取回率**另有损耗，实测约 8/10。模型看到的 `transcript-failed` 是如实上报的（两轮答案都点名了失败的那两篇、说明只靠标题正文），所以**答案不会因此编造**，但样本量会比预期少 1–2 篇。
+
+**唯一的补救是重新调一次详情拿新地址——那要再付一次详情调用的钱**，所以本轮不自动这么做：这一篇的钱该不该再花，是模型按「还差几篇」自己判断的事（`XHS_API_DETAIL_LIMIT` 就是为这种取舍准备的）。**将来若要提高取回率，先量清楚 403 的比例再决定**，不要凭一次观测下结论。
+
+### 仍未验证
+
+- **`no-transcript` 的真实样本**：真实一轮只碰到 `no-voice`。第 10.2 节那个问题（`subtitles` 是整体缺失还是键在但数组为空）依旧没有答案——实现两种都当 `no-transcript` 处理，所以不影响正确性。
+- **长视频的字幕体量**：真实样本最长的 11 分钟，`XHS_API_TRANSCRIPT_LIMIT=20000` 没被触发过（`truncated` 恒为 false）。截断逻辑只有合成样本的 L1 覆盖。
+- **403 取回率的真实比例**：只有 20 次详情、两轮观测，且都来自同一个出口网络。**是不是本地网络的问题（比如被 CDN 风控）无法排除**——服务器上跑起来之前，别把这个比例当结论。
+- **字幕 URL 的时效**（第 10.7 节）：本轮都是取到就下载，仍然没有「隔多久失效」的数据。**不要缓存 URL**这条纪律照旧。
 
 ## 附录 A：已否决的画面路线（2026-09-25 调研，2026-09-26 否决）
 
