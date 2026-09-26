@@ -8,7 +8,7 @@
 - `lib/commerce/`：淘宝商品卡片链路（技能产出机器可读商品块 → 聚合中转适配器 → 卡片补全编排）。上游字段、错误码和超时规则以 `docs/specs/09-21-justoneapi-taobao-ssot.md` 为准，换供应商只改 `lib/commerce/taobao.ts`。
 - `lib/xhs/`：小红书取数，**只有一条链路**：TikHub（`tikhub.ts`）。上游字段、两层信封与计费陷阱以 `docs/specs/09-24-tikhub-xhs-ssot.md` 为准（**换过供应商：`09-24-justoneapi-xhs-ssot.md` 已作废**）。2026-09-24 之前还有一条本地浏览器驱动的 MCP 回退路径，已随 Phase D 清账删除——`mcp-source.ts`、`xiaohongshu-mcp/`、`scripts/xhs-mcp-*`、`docs/xhs-mcp-local.md` 都不在了。架构与改动面见 `docs/specs/09-24-xhs-api-integration.md`。
 - `lib/storage/`、`lib/types/`：`.local-data/` 下的 JSON 存储和领域类型。
-- `app/xhs-reads/`、`lib/pi/session-reads.ts`：**取数记录**（排查用，不是产品功能）。把 agent 从小红书读到的原始 payload 摊开看，含视频口播字幕。数据**直接读 pi 的会话文件**（工具返回值本来就存在那里），所以不写任何东西、也能看历史会话；认不出格式时按「没有记录」降级，不报错。
+- `frontend/components/reads/`、`lib/pi/session-reads.ts`：**取数证据**（排查用，不是产品功能）。对话右侧那条可折叠的面板，把 agent 从小红书读到的原始 payload 摊开看，含视频口播字幕；展开状态由 `AdvisorApp` 持有（手机的入口在标题栏，所以两边要共用一份状态）。数据**直接读 pi 的会话文件**（工具返回值本来就存在那里），所以不写任何东西、也能看历史对话；认不出格式时按「没有记录」降级，不报错。`app/xhs-reads/` 是同一份数据的跨对话页面，暂无界面入口。
 - `xiaohongshu-makeup-advisor-latest/`：妆容顾问技能，Agent 的行为来源（`SKILL.md` + `references/`）。
 - `.pi/extensions/`：把小红书数据源注册为 pi 只读工具 `xhs_*` 的扩展。工具名与**数据源实现**解耦（换供应商、换传输都不动工具名，也不动技能与提示词），`XHS_SOURCE_MODE` 现在没有回退分支，只有「api」和「没配好就降级」。
 - `scripts/`：部署相关。`deploy.sh` 是**本机/应急**路径（拉代码 → 装依赖 → 校验 `.env` → 构建 → 自检 → 重启；`DEPLOY_DRY_RUN=1` 先体检），**生产不走它**——生产是 push 到 `main` 触发 CI 构建，服务器只换目录，见 `docs/specs/09-26-cicd-deploy.md`。`deploy-remote.sh` 在服务器上执行换目录/重启/回滚，`bootstrap-server.sh` 是一次性初始化，`preflight.mjs` 是两边共用的 `.env` 校验与扩展自检（**不要各抄一份**），`looktrace.service` 是 systemd 单元。脚本用 POSIX `sh`，别用 bash 专有语法。
