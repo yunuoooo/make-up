@@ -111,6 +111,15 @@ Related specs: [09-24-xhs-api-integration.md](./09-24-xhs-api-integration.md)（
 
 ⚠️ **字幕地址不走同一条规则**（2026-09-26 复核改正）：实测它**已经是 `https://`**，域名是 **`sns-subtitle-s8.rednotecdn.com`**——**不在 `xhscdn.com` 上**。白名单如果只写 `xhscdn.com`，这条链路会永远返回 `transcript-failed`（规格第 6.1 节原文如此，已在实现里改正为两个域名都收）。仍然统一过一遍 `normalizeUrl`（协议相对与 http 的历史形态都还在别处出现），但别指望靠它拿到正确域名。
 
+⚠️ **字幕有两台主机，且必须互为备份**（2026-09-29 实测）：`sns-subtitle-s8.rednotecdn.com` 在 **Akamai** 后面（`server: AkamaiGHost`），`sns-subtitle-s10.rednotecdn.com` 是另一家（`server: Tengine`）。**签名签的是 path，不是主机名**，所以同一个 path + 同一个签名在第二台上照常有效——两台互相换着取即可，不要自己拼域名。
+
+| 主机 | 谁在用 | 机房 IP 的待遇 |
+| --- | --- | --- |
+| `sns-subtitle-s8.rednotecdn.com` | 上游默认给这台 | **403**（Akamai 挡机房 IP；换 UA / 换请求头 / 强制走别的边缘节点都无效，同一条地址本机同时 200） |
+| `sns-subtitle-s10.rednotecdn.com` | 备用 | 200，字节数与 s8 完全一致 |
+
+其余 `s1`–`s12` 里只有这两台解析得出（`s1`–`s7`、`s9`、`s11`、`s12` 均 NXDOMAIN），所以「换一台」不是猜域名，就是这两台之间换。⚠️ 上游换域名时这张表要跟着更新；不在表里的主机名**一个都不拼**。
+
 **`.srt` 的格式（2026-09-25 抽样脚本实测，标准 SRT）**：
 
 ```
