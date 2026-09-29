@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  alternateSubtitleUrls,
   formatTranscript,
   isFetchableTranscriptUrl,
   parseSrt,
@@ -97,4 +98,24 @@ test("白名单：只放行 https + xhscdn.com / rednotecdn.com（含子域）",
 
   assert.equal(transcriptHost("https://evil.example.com/a.srt?sign=SECRET"), "evil.example.com",
     "排障只报 host，签名参数不进日志");
+});
+
+test("备用字幕域名：只换主机名，path 与签名原样保留", () => {
+  const [alternate] = alternateSubtitleUrls("https://sns-subtitle-s8.rednotecdn.com/subtitle/1/110/1/abc_1.srt?sign=SIG&t=1");
+  assert.ok(alternate, "s8 被拒时要有一台可换——Akamai 对机房 IP 就是这么拒的（2026-09-29 实测）");
+  const url = new URL(alternate);
+  assert.equal(url.hostname, "sns-subtitle-s10.rednotecdn.com", "换到另一家 CDN 上");
+  assert.equal(url.pathname, "/subtitle/1/110/1/abc_1.srt", "path 不动——换的是取法，不是对象");
+  assert.equal(url.search, "?sign=SIG&t=1", "签名原样带走：它签的本来就是 path");
+  assert.equal(alternateSubtitleUrls(alternate)[0], "https://sns-subtitle-s8.rednotecdn.com/subtitle/1/110/1/abc_1.srt?sign=SIG&t=1",
+    "反过来也一样：给哪台就先试哪台，备用是另一台");
+});
+
+test("备用字幕域名：没核实过的主机名一个都不拼", () => {
+  assert.deepEqual(alternateSubtitleUrls("https://sns-subtitle-s3.rednotecdn.com/x.srt?sign=SIG"), [],
+    "s1–s12 扫过，只有 s8 与 s10 存在；其余不猜");
+  assert.deepEqual(alternateSubtitleUrls("https://evil.example.com/x.srt?sign=SIG"), [], "白名单外不拼");
+  assert.deepEqual(alternateSubtitleUrls("http://sns-subtitle-s8.rednotecdn.com/x.srt?sign=SIG"), [],
+    "换完仍要过白名单：只走 https");
+  assert.deepEqual(alternateSubtitleUrls("不是一个地址"), []);
 });

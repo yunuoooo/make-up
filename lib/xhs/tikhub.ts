@@ -1,4 +1,10 @@
-import { formatTranscript, isFetchableTranscriptUrl, parseSrt, transcriptHost } from "./transcript.ts";
+import {
+  alternateSubtitleUrls,
+  formatTranscript,
+  isFetchableTranscriptUrl,
+  parseSrt,
+  transcriptHost
+} from "./transcript.ts";
 import type { XhsCallInfo, XhsNoteDetail, XhsNoteStats, XhsNoteSummary, XhsSearchPage } from "./types.ts";
 
 /**
@@ -647,16 +653,18 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
   }
 
   /**
-   * 取一次 `.srt`。**只对连接层的即时失败重试一次**：
+   * 对**一个**地址取 `.srt`。**只对连接层的即时失败重试一次**：
    * - 超时**不**重试——重试会把等待翻倍，而本轮预算只有 60 秒；
    * - HTTP 错误码**不**重试——签名错了重试还是错（`403` 不会自己好）。
    *
    * 超时信号按**每次尝试**新建：`AbortSignal.timeout` 是一次性的，复用会让第二次立刻失败。
+   *
+   * `stop=true` 表示「别再试别的域名了」：超时与取消是时间问题，换台主机也救不回来。
    */
-  async function fetchTranscript(
+  async function fetchTranscriptFrom(
     url: string,
     signal: AbortSignal | undefined
-  ): Promise<{ text: string } | { failed: string }> {
+  ): Promise<{ text: string } | { failed: string; stop: boolean }> {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= TRANSCRIPT_ATTEMPTS; attempt += 1) {
       const timeout = AbortSignal.timeout(timeoutMs);
@@ -667,15 +675,43 @@ export function createXhsClient(options: XhsClientOptions = {}): XhsClient {
           headers: { "user-agent": TRANSCRIPT_USER_AGENT },
           signal: composed
         });
-        if (!response.ok) return { failed: `字幕下载失败（HTTP ${response.status}）` };
+        if (!response.ok) return { failed: `HTTP ${response.status}`, stop: false };
         return { text: await response.text() };
       } catch (error) {
         lastError = error;
         const name = (error as { name?: string } | null)?.name;
-        if (signal?.aborted || name === "TimeoutError" || name === "AbortError") break;
+        if (signal?.aborted || name === "TimeoutError" || name === "AbortError") {
+          return { failed: errorLabel(lastError), stop: true };
+        }
       }
     }
-    return { failed: `字幕下载失败（${errorLabel(lastError)}）` };
+    return { failed: errorLabel(lastError), stop: false };
+  }
+
+  /**
+   * 取一次 `.srt`：**先试上游给的那台主机，被拒就换备用域名**（同一 path、同一签名）。
+   *
+   * 为什么要换这一台：字幕默认落在 Akamai 后面的 `sns-subtitle-s8` 上，而 Akamai 会把机房 IP
+   * 直接 403 掉——2026-09-29 实测，同一条地址本机同一秒 200、生产服务器 403，换 UA、换请求头、
+   * 强制走对方边缘节点都无效；换成另一家的 `sns-subtitle-s10` 服务器上立刻 200，字节数一致
+   * （18 条地址：s8 全 403 / s10 全 200，细节与主机表见 `transcript.ts`）。
+   *
+   * 这笔买卖划算的原因：`.srt` 走 CDN、不过 TikHub、**不计费**，多试一台的代价只有时间；
+   * 而一次 403 的代价是这一篇的口播整轮拿不到，**详情的钱已经花过了**。
+   */
+  async function fetchTranscript(
+    url: string,
+    signal: AbortSignal | undefined
+  ): Promise<{ text: string } | { failed: string }> {
+    const failures: string[] = [];
+    for (const candidate of [url, ...alternateSubtitleUrls(url)]) {
+      const result = await fetchTranscriptFrom(candidate, signal);
+      if ("text" in result) return result;
+      // 排障带上 host（**不含签名参数**，SSOT 第 6.4 节）：失败的是哪一台，下一个人一眼能看见。
+      failures.push(`${transcriptHost(candidate)} ${result.failed}`);
+      if (result.stop) break;
+    }
+    return { failed: `字幕下载失败（${failures.join("；")}）` };
   }
 
   return {

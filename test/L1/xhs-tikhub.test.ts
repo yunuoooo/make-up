@@ -245,12 +245,71 @@ test("详情：字幕 CDN 瞬时失败要重试一次（它不计费，重试的
   assert.ok(note?.transcript, "重试成功后照常拿到字幕");
   assert.equal(note?.transcriptIssue, undefined);
 
-  // HTTP 错误码不重试：签名错了重试还是错。
+  // HTTP 错误码不在**同一个地址**上重试：签名错了重试还是错。但会换备用域名试一次（下一个用例）。
   const denied = stubFetch({ detail: () => ({ body }), subtitle: () => ({ status: 403, text: "denied" }) });
   const deniedNote = await createXhsClient({ fetchImpl: denied.fetchImpl, env: { ...env } })
     .getNoteDetail(VIDEO_NOTE_ID, { noteType: "video" });
   assert.equal(deniedNote?.transcriptIssue?.reason, "transcript-failed");
-  assert.equal(denied.calls.filter((call) => !call.url.includes("tikhub")).length, 1, "403 不重试");
+  const deniedCalls = denied.calls.filter((call) => !call.url.includes("tikhub"));
+  assert.deepEqual(deniedCalls.map((call) => new URL(call.url).hostname),
+    ["sns-subtitle-s8.rednotecdn.com", "sns-subtitle-s10.rednotecdn.com"],
+    "403 不在同一地址上重试，而是换另一台字幕主机");
+});
+
+test("详情：首发字幕主机被拒时换备用域名——Akamai 对机房 IP 就是回 403", async () => {
+  const body = await videoFixture();
+  const srt = await readFile("test/L1/fixtures/xhs-subtitle-sample.srt", "utf8");
+  // 2026-09-29 实测的形状：s8（Akamai）对生产服务器的 IP 一律 403，s10（另一家 CDN）同 path 同签名照常 200。
+  const stub = stubFetch({
+    detail: () => ({ body }),
+    subtitle: (url) => url.hostname === "sns-subtitle-s8.rednotecdn.com"
+      ? { status: 403, text: "Access Denied" }
+      : { text: srt }
+  });
+  const note = await createXhsClient({ fetchImpl: stub.fetchImpl, env: { ...env } })
+    .getNoteDetail(VIDEO_NOTE_ID, { noteType: "video" });
+
+  assert.ok(note?.transcript, "换一台就该拿到字幕——这条链路本来要整篇降级");
+  assert.equal(note.transcriptIssue, undefined);
+  const subtitleCalls = stub.calls.filter((call) => !call.url.includes("tikhub"));
+  assert.equal(subtitleCalls.length, 2, "首发失败 → 备用域名一次，没有第三次");
+  assert.equal(new URL(subtitleCalls[0].url).hostname, "sns-subtitle-s8.rednotecdn.com");
+  assert.equal(new URL(subtitleCalls[1].url).hostname, "sns-subtitle-s10.rednotecdn.com");
+  // 换的只是取法：path 与查询串（含签名）原样搬过去，不做任何改写。
+  const [first, second] = subtitleCalls.map((call) => new URL(call.url));
+  assert.equal(second.pathname, first.pathname);
+  assert.equal(second.search, first.search);
+  assert.equal(subtitleCalls[1].headers["user-agent"], "Mozilla/5.0", "备用域名照带 UA");
+  assert.ok(!JSON.stringify(note).includes(".srt"), "拿到字幕也不下发签名地址");
+});
+
+test("详情：两台字幕主机都被拒 → 失败信息说清是哪几台，且不带签名", async () => {
+  const body = await videoFixture();
+  const stub = stubFetch({ detail: () => ({ body }), subtitle: () => ({ status: 403, text: "Access Denied" }) });
+  const note = await createXhsClient({ fetchImpl: stub.fetchImpl, env: { ...env } })
+    .getNoteDetail(VIDEO_NOTE_ID, { noteType: "video" });
+
+  assert.equal(note?.transcript, undefined);
+  assert.equal(note?.transcriptIssue?.reason, "transcript-failed");
+  const detail = note?.transcriptIssue?.detail ?? "";
+  assert.match(detail, /sns-subtitle-s8\.rednotecdn\.com HTTP 403/);
+  assert.match(detail, /sns-subtitle-s10\.rednotecdn\.com HTTP 403/, "两台都试过才报失败——排障要知道试到哪一步");
+  assert.ok(!detail.includes("FAKESIGN"), "签名不进任何输出（SSOT 第 6.4 节）");
+});
+
+test("详情：上游给的是没核实过的主机名 → 不拼备用域名，只打那一台", async () => {
+  const body = await videoBody((entry) => {
+    entry.video_info_v2.media.video.subtitles = {
+      source: [{ url: "https://sns-subtitle-s3.rednotecdn.com/subtitle/x.srt?sign=FAKESIGN&t=1" }]
+    };
+  });
+  const stub = stubFetch({ detail: () => ({ body }), subtitle: () => ({ status: 403, text: "Access Denied" }) });
+  const note = await createXhsClient({ fetchImpl: stub.fetchImpl, env: { ...env } })
+    .getNoteDetail(VIDEO_NOTE_ID, { noteType: "video" });
+
+  const subtitleCalls = stub.calls.filter((call) => !call.url.includes("tikhub"));
+  assert.equal(subtitleCalls.length, 1, "不在表里的域名不猜——白名单只证明「是小红的 CDN」，不证明「这台有那个对象」");
+  assert.match(note?.transcriptIssue?.detail ?? "", /sns-subtitle-s3\.rednotecdn\.com HTTP 403/);
 });
 
 test("字幕地址只允许落在 CDN 白名单内：别的域名一次请求都不发", async () => {

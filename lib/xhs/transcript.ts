@@ -21,6 +21,43 @@
  */
 const ALLOWED_HOSTS = ["xhscdn.com", "rednotecdn.com"];
 
+/**
+ * 字幕**实际在用的两台主机**，互为备份。
+ *
+ * 上游默认把 `.srt` 放在 `s8` 上，而 `s8` 在 **Akamai** 后面——Akamai 对机房 IP 直接回 403：
+ * 2026-09-29 实测，同一条地址（同 path、同签名）本机 200、生产服务器 403，换 UA、换请求头、
+ * 强制走对方边缘节点都无效；把主机名换成 `s10`（另一家 CDN，`server: Tengine`）**服务器上就 200，
+ * 字节数一致**（18 条地址：s8 全 403 / s10 全 200）。所以取不到时换一台再试，不是猜域名。
+ *
+ * 表里只放**核实过存在**的主机名（s1–s12 扫过，其余 NXDOMAIN）。上游若换域名，这张表要跟着更新——
+ * 不在表里的主机名**一个都不拼**，宁可如实失败。
+ */
+const SUBTITLE_HOSTS = ["sns-subtitle-s8.rednotecdn.com", "sns-subtitle-s10.rednotecdn.com"];
+
+/**
+ * 同一个对象的其它取法：**只换主机名，path 与签名原样保留**。
+ *
+ * 上游给的域名不在已知表里时返回空数组——不拼、不猜、不试。
+ */
+export function alternateSubtitleUrls(raw: string): string[] {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return [];
+  }
+  if (!SUBTITLE_HOSTS.includes(url.hostname)) return [];
+  return SUBTITLE_HOSTS
+    .filter((host) => host !== url.hostname)
+    .map((host) => {
+      const alternate = new URL(url);
+      alternate.hostname = host;
+      return alternate.toString();
+    })
+    // 换完再过一遍白名单：备用域名也必须是 https + 允许的域，多一道闸门不嫌多。
+    .filter((alternate) => isFetchableTranscriptUrl(alternate));
+}
+
 export type TranscriptCue = {
   /** 已格式化的起点，`MM:SS`（累计分钟，见 `stamp`）。 */
   start: string;
