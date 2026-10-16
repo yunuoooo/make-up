@@ -30,6 +30,7 @@ import {
 } from "@/frontend/components/ui/sidebar";
 import { Toaster } from "@/frontend/components/ui/sonner";
 import { ChatView } from "@/frontend/components/chat/ChatView";
+import { ImportDialog } from "@/frontend/components/beauty-kit/ImportDialog";
 import { LibraryView } from "@/frontend/components/beauty-kit/LibraryView";
 import { PresetNotice } from "@/frontend/components/beauty-kit/PresetNotice";
 import { ProductDialog } from "@/frontend/components/beauty-kit/ProductDialog";
@@ -48,6 +49,7 @@ export function AdvisorApp() {
   // 证据面板的展开状态放在这里：手机上的入口在标题栏，状态得由两边共同持有。
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<UserProduct | null>(null);
   const [productToDelete, setProductToDelete] = useState<UserProduct | null>(null);
 
@@ -240,10 +242,19 @@ export function AdvisorApp() {
               </div>
             </div>
           ) : (
-            <Button onClick={openCreateProduct} className="rounded-xl bg-[#242421] text-white hover:bg-[#393834]">
-              <Plus />
-              添加化妆品
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsImportDialogOpen(true)}
+                className="rounded-xl border-black/[.08]"
+              >
+                粘贴购买记录
+              </Button>
+              <Button onClick={openCreateProduct} className="rounded-xl bg-[#242421] text-white hover:bg-[#393834]">
+                <Plus />
+                添加化妆品
+              </Button>
+            </div>
           )}
         </header>
 
@@ -289,10 +300,18 @@ export function AdvisorApp() {
               onCreate={openCreateProduct}
               onEdit={openEditProduct}
               onDelete={setProductToDelete}
+              onJudge={(product) => void beautyKit.judgeProduct(product.id)}
             />
           </>
         )}
       </SidebarInset>
+
+      <ImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        userId={CURRENT_USER_ID}
+        onImported={beautyKit.reload}
+      />
 
       <ProductDialog
         open={isProductDialogOpen}

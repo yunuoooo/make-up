@@ -207,8 +207,12 @@ export async function createUserProducts(userId: string, inputs: ProductInput[])
   return created;
 }
 
-export async function updateUserProduct(userId: string, id: string, input: Partial<ProductInput>): Promise<UserProduct | null> {
+export async function getUserProduct(userId: string, id: string): Promise<UserProduct | null> {
   const products = await readJson<UserProduct[]>(fileName, []);
+  return products.find((product) => product.id === id && product.userId === userId) ?? null;
+}
+
+export async function updateUserProduct(userId: string, id: string, input: Partial<ProductInput>): Promise<UserProduct | null> {  const products = await readJson<UserProduct[]>(fileName, []);
   const index = products.findIndex((product) => product.id === id && product.userId === userId);
   if (index === -1) return null;
 

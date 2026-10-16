@@ -2,6 +2,9 @@
 // → 这里），仓库的 `@/*` 别名在那边解析不了。虽然是 `import type`，也不要改回别名。
 import type { AttributeSourceRecord } from "../kit/attributes.ts";
 
+// 逐属性来源跟着 `UserProduct` 走，所以在这里一并导出，消费方不用再记一个模块路径。
+export type { AttributeSourceRecord };
+
 export type ProductStatus = "owned" | "wishlist" | "retired";
 
 /** 这条记录从哪来。预设与导入都要能认出来，界面才好如实标注（规格第 5.3 / 6.4 节）。 */

@@ -53,9 +53,49 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
     setEditingProductId(product.id);
   }, []);
 
+  /** 重新判断某一件的特点（手动录入后自动跑过一次，也能手动再跑）。 */
+  const judgeProduct = useCallback(async (productId: string, options: { silent?: boolean } = {}) => {
+    try {
+      const response = await fetch(`/api/user-products/${productId}/judge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId })
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        // 判断失败不影响记录：条目还在，特点留空，用户能再点一次。
+        if (!options.silent) toast.error(data?.error ?? "判断特点失败。");
+        return false;
+      }
+      await loadProducts();
+      if (data?.judged === 0 && !options.silent) {
+        toast.info(data?.message ?? "没能从现有信息判断出新特点。");
+      }
+      return true;
+    } catch (error) {
+      if (!options.silent) {
+        toast.error(error instanceof Error ? error.message : "判断特点失败。");
+      }
+      return false;
+    }
+  }, [loadProducts, userId]);
+
   const saveProduct = useCallback(async (event: FormEvent) => {
     event.preventDefault();
-    if (!productForm.brand.trim() || !productForm.name.trim() || !productForm.category.trim()) return false;
+    // 必填只有品类与品牌（决策 4）：产品名与色号对部分品类本来就不适用，
+    // 特点由判断调用回来后再填。
+    if (!productForm.brand.trim() || !productForm.category.trim()) return false;
+
+    // 三个 legacy 字段也走 attributes：写入时存储会镜像回顶层列，两边不会漂。
+    const attributes = Object.fromEntries(
+      Object.entries({
+        colorFamily: productForm.colorFamily,
+        finish: productForm.finish,
+        texture: productForm.texture
+      })
+        .map(([key, value]) => [key, value.trim()] as const)
+        .filter((entry) => Boolean(entry[1]))
+    );
 
     const payload = {
       userId,
@@ -63,9 +103,7 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
       name: productForm.name,
       category: productForm.category,
       shade: productForm.shade,
-      colorFamily: productForm.colorFamily,
-      finish: productForm.finish,
-      texture: productForm.texture,
+      attributes,
       effectTags: parseTags(productForm.effectTags),
       notes: productForm.notes
     };
@@ -87,15 +125,21 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
       }
 
       const wasEditing = Boolean(editingProductId);
+      const savedId = data?.product?.id as string | undefined;
       resetProductForm();
       await loadProducts();
       toast.success(wasEditing ? "化妆品信息已更新" : "已经加入你的化妆品库");
+
+      // 新增的条目保存后**异步**判断一次特点，不阻断保存：判断是一次模型调用，
+      // 把它做成保存的前置会把「加一件化妆品」变成一件要等的事（规格第 6.3 节）。
+      // 失败就留空，卡片上还有「判断特点」可以再点。
+      if (!wasEditing && savedId) void judgeProduct(savedId, { silent: true });
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存妆匣产品失败。");
       return false;
     }
-  }, [editingProductId, loadProducts, productForm, resetProductForm, userId]);
+  }, [editingProductId, judgeProduct, loadProducts, productForm, resetProductForm, userId]);
 
   const deleteProduct = useCallback(async (productId: string) => {
     try {
@@ -127,7 +171,7 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
     [products]
   );
 
-  /** 一键清空示例。只删预设条目，自己录的和导入的一条都不动（服务端按来源过滤）。 */
+  /** 清空示例妆匣。只删预设条目，自己录的和导入的一条都不动（服务端按来源过滤）。 */
   const clearPreset = useCallback(async () => {
     setIsClearingPreset(true);
     try {
@@ -189,6 +233,9 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
     deleteProduct,
     presetProducts,
     clearPreset,
-    isClearingPreset
+    isClearingPreset,
+    judgeProduct,
+    /** 导入确认后重新拉一次列表。 */
+    reload: loadProducts
   };
 }
