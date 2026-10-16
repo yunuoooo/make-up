@@ -72,7 +72,8 @@ export function ProductDialog({
               {editingProduct ? "编辑这件化妆品" : "添加到我的化妆品库"}
             </DialogTitle>
             <DialogDescription className="leading-6">
-              品牌、完整产品名和版本/色号会直接用于推荐里的 ✅ 结论。
+              必填只有品类与品牌。保存后系统会按这些信息判断妆效特点（色系、浓淡等），
+              判断结果可以在卡片上核对和修改——它只是线索，顾问仍会按需检索核实。
             </DialogDescription>
           </DialogHeader>
 
@@ -106,8 +107,8 @@ export function ProductDialog({
 
             <label className={`${FIELD_LABEL} sm:col-span-2`}>
               完整产品名
+              <span className="text-xs font-normal text-[#9d958e]">选填</span>
               <Input
-                required
                 value={form.name}
                 onChange={(event) => onFieldChange("name", event.target.value)}
                 placeholder="例如：Better Than Cheek"
@@ -117,6 +118,7 @@ export function ProductDialog({
 
             <label className={FIELD_LABEL}>
               版本 / 色号
+              <span className="text-xs font-normal text-[#9d958e]">工具类可留空</span>
               <Input
                 value={form.shade}
                 onChange={(event) => onFieldChange("shade", event.target.value)}

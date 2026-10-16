@@ -18,6 +18,38 @@ export async function readJson<T>(fileName: string, fallback: T): Promise<T> {
   }
 }
 
+export type JsonReadResult<T> =
+  | { status: "ok"; data: T }
+  /** 文件不存在：这是「还没有数据」，不是故障。 */
+  | { status: "missing" }
+  /** 读到了但读不懂（截断、坏 JSON、权限）。**不能当成空**。 */
+  | { status: "corrupt"; error: string };
+
+/**
+ * 区分「没有」和「坏了」的读取。
+ *
+ * `readJson` 对**任何**失败都返回 fallback，这对「读-改-写」的路径是危险的忽略：
+ * 文件被截断时它会读成 `[]`（见下面 writeJson 的注释）。展示型调用方无所谓，
+ * 但妆匣要如实告诉模型「本轮没取得数据」还是「妆匣是空的」——这两句话对用户的
+ * 含义完全相反，混起来模型就会把「没读到」说成「你没有」。
+ */
+export async function readJsonChecked<T>(fileName: string): Promise<JsonReadResult<T>> {
+  let text: string;
+  try {
+    text = await readFile(path.join(dataDir(), fileName), "utf8");
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === "ENOENT") return { status: "missing" };
+    return { status: "corrupt", error: error instanceof Error ? error.message : String(error) };
+  }
+
+  try {
+    return { status: "ok", data: JSON.parse(text) as T };
+  } catch (error) {
+    return { status: "corrupt", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export async function writeJson<T>(fileName: string, data: T): Promise<void> {
   const dir = dataDir();
   await mkdir(dir, { recursive: true });

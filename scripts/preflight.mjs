@@ -100,16 +100,38 @@ if (wantExtension) {
   const loaderPath = path.join(cwd, "node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
   const { createExtensionRuntime } = await import("@earendil-works/pi-coding-agent");
   const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
+  // 两个技能都必须存在，缺一个就在 spawn 前直接失败——少加载一个是静默的：
+  // 模型会照着另一个技能的措辞往下走，而少了 makeup-kit 时它读不到妆匣规则却仍然标 ✅。
+  const skillProblems = [];
+  for (const dir of ["xiaohongshu-makeup-advisor-latest", "makeup-kit"]) {
+    const entry = path.join(cwd, dir, "SKILL.md");
+    if (!(await import("node:fs/promises")).stat(entry).then(() => true, () => false)) {
+      skillProblems.push(`缺少技能文件 ${entry}`);
+    }
+  }
+  if (skillProblems.length) {
+    console.error("✗ 技能不完整：");
+    for (const p of skillProblems) console.error("  - " + p);
+    process.exit(1);
+  }
+  console.log("  ✓ 技能: xiaohongshu-makeup-advisor-latest + makeup-kit");
   // 不发任何上游请求：只问扩展「你看到的数据源是什么」。
-  const r = await loadExtensions([".pi/extensions/xhs-source.ts"], cwd, undefined, createExtensionRuntime());
-  const extension = r.extensions?.[0];
-  if (!extension) {
-    console.error(`✗ 扩展没加载出来（errors=${r.errors.length}），先修好再重启。`);
+  const r = await loadExtensions(
+    [".pi/extensions/xhs-source.ts", ".pi/extensions/kit-source.ts"],
+    cwd,
+    undefined,
+    createExtensionRuntime()
+  );
+  // 工具要从**所有**扩展里收：现在不止一个扩展，只看第一个会漏掉妆匣工具。
+  const tools = (r.extensions ?? []).flatMap((extension) =>
+    [...extension.tools.values()].map((t) => t.definition ?? t)
+  );
+  const status = await tools.find((t) => t.name === "xhs_source_status")?.execute("deploy-check", {});
+  if (!status) {
+    console.error(`✗ 没注册出 xhs_source_status（errors=${r.errors.length}），先修好再重启。`);
     for (const e of r.errors ?? []) console.error(`  - ${e.message ?? e}`);
     process.exit(1);
   }
-  const tools = [...extension.tools.values()].map((t) => t.definition ?? t);
-  const status = await tools.find((t) => t.name === "xhs_source_status").execute("deploy-check", {});
   const result = `errors=${r.errors.length} ${status.content[0].text}`;
   console.log(`  ${result}`);
   if (!result.includes("errors=0")) {
@@ -120,4 +142,18 @@ if (wantExtension) {
     console.error("✗ 扩展没读到 api 模式的凭据——重启也不会生效，回去看 .env 校验。");
     process.exit(1);
   }
+  // 妆匣工具也自检一次：它跑的是同一套 jiti 加载器，别名解析不了的话在运行时才炸，
+  // 而且报错是模块解析失败、不指向妆匣。这里调一次就能当场看见。
+  const kit = tools.find((t) => t.name === "kit_list_products");
+  if (!kit) {
+    console.error("✗ 没注册出 kit_list_products——妆匣读不到，顾问会退化成凭印象推荐。");
+    process.exit(1);
+  }
+  const kitResult = await kit.execute("deploy-check", {});
+  const kitPayload = JSON.parse(kitResult.content[0].text);
+  if (!["ok", "empty", "read-failed"].includes(kitPayload.availability)) {
+    console.error(`✗ 妆匣工具返回的 availability 不认识：${kitPayload.availability}`);
+    process.exit(1);
+  }
+  console.log(`  ✓ 妆匣: availability=${kitPayload.availability}`);
 }

@@ -1,5 +1,6 @@
 {
   "extensions": [
-    "extensions/xhs-source.ts"
+    "extensions/xhs-source.ts",
+    "extensions/kit-source.ts"
   ]
 }

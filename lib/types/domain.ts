@@ -1,4 +1,14 @@
+// 相对路径 + `.ts`：这条链子会被 pi 的 jiti 加载（`kit-source.ts` → `user-products.ts`
+// → 这里），仓库的 `@/*` 别名在那边解析不了。虽然是 `import type`，也不要改回别名。
+import type { AttributeSourceRecord } from "../kit/attributes.ts";
+
+// 逐属性来源跟着 `UserProduct` 走，所以在这里一并导出，消费方不用再记一个模块路径。
+export type { AttributeSourceRecord };
+
 export type ProductStatus = "owned" | "wishlist" | "retired";
+
+/** 这条记录从哪来。预设与导入都要能认出来，界面才好如实标注（规格第 5.3 / 6.4 节）。 */
+export type ProductRecordSource = "preset" | "manual" | "import";
 
 export type UserProduct = {
   id: string;
@@ -6,18 +16,32 @@ export type UserProduct = {
   brand: string;
   name: string;
   skuId?: string;
+  /** 品类原文。标准品类由 `normalizeCategoryId` 在读的时候归一，**不落库**——映射变了不该让存量数据变味。 */
   category: string;
   shade?: string;
+  /**
+   * 词表维度的取值（`lib/kit/attributes.ts`）。
+   *
+   * 下面三个 legacy 顶层字段（`colorFamily` / `finish` / `texture`）与 `attributes` 里的
+   * 同名键指同一件事，**写入时镜像**、读取时 `attributes` 优先——存量界面代码
+   * （搜索、标签行）还在读顶层字段，等它们都迁完再删。别只写一边。
+   */
+  attributes?: Record<string, string>;
+  /** 逐属性来源。**逐属性**是刻意的：「色号」是查得到的事实，「浓妆还是淡妆」是判断，可信度不同。 */
+  attributeSources?: Record<string, AttributeSourceRecord>;
   colorFamily?: string;
   finish?: string;
   texture?: string;
   effectTags: string[];
   status: ProductStatus;
+  /** 记录来源；缺省按 `"manual"` 处理，存量数据因此不用迁移。 */
+  recordSource?: ProductRecordSource;
   rating?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;
 };
+
 
 export type SourceItem = {
   id: string;

@@ -30,14 +30,15 @@ import {
 } from "@/frontend/components/ui/sidebar";
 import { Toaster } from "@/frontend/components/ui/sonner";
 import { ChatView } from "@/frontend/components/chat/ChatView";
-import { LibraryComingSoon } from "@/frontend/components/beauty-kit/LibraryComingSoon";
+import { ImportDialog } from "@/frontend/components/beauty-kit/ImportDialog";
 import { LibraryView } from "@/frontend/components/beauty-kit/LibraryView";
+import { PresetNotice } from "@/frontend/components/beauty-kit/PresetNotice";
 import { ProductDialog } from "@/frontend/components/beauty-kit/ProductDialog";
 import { EvidencePanel } from "@/frontend/components/reads/EvidencePanel";
 import { useBeautyKit } from "@/frontend/hooks/useBeautyKit";
 import { useChat } from "@/frontend/hooks/useChat";
 import { useConversations } from "@/frontend/hooks/useConversations";
-import { CURRENT_USER_ID, IS_LIBRARY_OPEN } from "@/frontend/lib/constants";
+import { CURRENT_USER_ID } from "@/frontend/lib/constants";
 import { timeLabel } from "@/frontend/lib/formatters";
 import type { UserProduct } from "@/lib/types/domain";
 
@@ -48,6 +49,7 @@ export function AdvisorApp() {
   // 证据面板的展开状态放在这里：手机上的入口在标题栏，状态得由两边共同持有。
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<UserProduct | null>(null);
   const [productToDelete, setProductToDelete] = useState<UserProduct | null>(null);
 
@@ -56,11 +58,8 @@ export function AdvisorApp() {
   const beautyKit = useBeautyKit({ userId: CURRENT_USER_ID, onError });
   const chat = useChat({ userId: CURRENT_USER_ID, onError, onPersist: conversations.save });
 
-  // 化妆品库关闭期间，标题栏只交代状态，不再提供「添加化妆品」的入口。
-  const libraryTitle = IS_LIBRARY_OPEN ? "我的化妆品库" : "我的化妆品";
-  const librarySummary = IS_LIBRARY_OPEN
-    ? `${beautyKit.products.length} 件已确认拥有的化妆品`
-    : "暂未开放";
+  const libraryTitle = "我的化妆品库";
+  const librarySummary = `${beautyKit.products.length} 件已确认拥有的化妆品`;
 
   function startNewChat() {
     setView("chat");
@@ -153,15 +152,9 @@ export function AdvisorApp() {
                   >
                     <Library />
                     <span>我的化妆品</span>
-                    {IS_LIBRARY_OPEN ? (
-                      <span className="ml-auto rounded-full bg-[#ef7196]/20 px-2 py-0.5 text-[11px] text-[#ff9eba]">
-                        {beautyKit.products.length}
-                      </span>
-                    ) : (
-                      <span className="ml-auto rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-white/40">
-                        暂未开放
-                      </span>
-                    )}
+                    <span className="ml-auto rounded-full bg-[#ef7196]/20 px-2 py-0.5 text-[11px] text-[#ff9eba]">
+                      {beautyKit.products.length}
+                    </span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
@@ -248,12 +241,21 @@ export function AdvisorApp() {
                 {chat.isSending ? chat.runtimePhase ?? "顾问工作中" : "顾问在线"}
               </div>
             </div>
-          ) : IS_LIBRARY_OPEN ? (
-            <Button onClick={openCreateProduct} className="rounded-xl bg-[#242421] text-white hover:bg-[#393834]">
-              <Plus />
-              添加化妆品
-            </Button>
-          ) : null}
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsImportDialogOpen(true)}
+                className="rounded-xl border-black/[.08]"
+              >
+                粘贴购买记录
+              </Button>
+              <Button onClick={openCreateProduct} className="rounded-xl bg-[#242421] text-white hover:bg-[#393834]">
+                <Plus />
+                添加化妆品
+              </Button>
+            </div>
+          )}
         </header>
 
         {view === "chat" ? (
@@ -276,23 +278,40 @@ export function AdvisorApp() {
               onToggle={() => setIsEvidenceOpen((previous) => !previous)}
             />
           </div>
-        ) : IS_LIBRARY_OPEN ? (
-          <LibraryView
-            products={beautyKit.filteredProducts}
-            totalCount={beautyKit.products.length}
-            searchTerm={beautyKit.searchTerm}
-            categoryFilter={beautyKit.categoryFilter}
-            categories={beautyKit.categories}
-            onSearchChange={beautyKit.setSearchTerm}
-            onCategoryChange={beautyKit.setCategoryFilter}
-            onCreate={openCreateProduct}
-            onEdit={openEditProduct}
-            onDelete={setProductToDelete}
-          />
         ) : (
-          <LibraryComingSoon />
+          <>
+            {beautyKit.presetProducts.length > 0 && (
+              <div className="px-5 pt-4">
+                <PresetNotice
+                  count={beautyKit.presetProducts.length}
+                  onClear={beautyKit.clearPreset}
+                  isClearing={beautyKit.isClearingPreset}
+                />
+              </div>
+            )}
+            <LibraryView
+              products={beautyKit.filteredProducts}
+              totalCount={beautyKit.products.length}
+              searchTerm={beautyKit.searchTerm}
+              categoryFilter={beautyKit.categoryFilter}
+              categories={beautyKit.categories}
+              onSearchChange={beautyKit.setSearchTerm}
+              onCategoryChange={beautyKit.setCategoryFilter}
+              onCreate={openCreateProduct}
+              onEdit={openEditProduct}
+              onDelete={setProductToDelete}
+              onJudge={(product) => void beautyKit.judgeProduct(product.id)}
+            />
+          </>
         )}
       </SidebarInset>
+
+      <ImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        userId={CURRENT_USER_ID}
+        onImported={beautyKit.reload}
+      />
 
       <ProductDialog
         open={isProductDialogOpen}

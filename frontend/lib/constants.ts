@@ -1,30 +1,21 @@
+// 相对路径而不是 `@/`：`test/L1` 用 node 原生测试运行器直接跑这些模块，那边没有
+// `@/*` 的路径映射（先例：`frontend/lib/types.ts` 只敢用 type-only 的别名导入）。
+import { KIT_CATEGORY_NAMES } from "../../lib/kit/categories.ts";
 import type { ProductFormState } from "./types";
 
 export const CURRENT_USER_ID = "local-user";
 
+// 这里曾有一个 IS_LIBRARY_OPEN（`7bf70b5` 加的软关闭开关，把妆匣挡在「暂未开放」
+// 占位后面）。2026-10-16 连着占位页一起删了：妆匣已经是 Agent 的输入（`kit_list_products`），
+// 一个只藏界面、不挡 Agent 读库的开关会变成更坏的中间态——页面看着是关的，顾问照样在用
+// 用户没录入过的数据。要再关，得同时决定 Agent 侧怎么办，那是新决定，不是翻这个开关。
+
 /**
- * 化妆品库的开放开关。关闭期间侧边栏入口保留，进去只看到「暂未开放」占位，
- * 标题栏也不再给「添加化妆品」的入口。要恢复录入和筛选，把这里改回 true 即可。
- * 显式标 boolean 是有意的：字面量 false 会让 true 分支被判定为不可达。
+ * 品类筛选项。**从 `lib/kit/categories.ts` 派生，不要在这里另写一份**——
+ * 技能文本、工具层归一化和这里必须是同一套（规格 `docs/specs/10-16-makeup-kit.md` 第 7.1 节）。
+ * 顺序由那边的 `KIT_CATEGORIES` 决定，前端筛选与历史数据都依赖它。
  */
-export const IS_LIBRARY_OPEN: boolean = false;
-
-/** 与技能 SKILL.md 的用词保持一致，顾问给出的品类能直接落进筛选项。 */
-export const CATEGORY_OPTIONS = [
-  "底妆",
-  "遮瑕",
-  "定妆",
-  "眉笔",
-  "眼影",
-  "眼线",
-  "睫毛膏",
-  "腮红",
-  "修容",
-  "高光",
-  "唇妆",
-  "工具"
-];
-
+export const CATEGORY_OPTIONS: string[] = [...KIT_CATEGORY_NAMES];
 export const SUGGESTED_PROMPTS = [
   "韩系氧气妆",
   "清冷通勤妆",

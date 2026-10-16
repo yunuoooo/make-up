@@ -18,6 +18,8 @@ type LibraryViewProps = {
   onCreate: () => void;
   onEdit: (product: UserProduct) => void;
   onDelete: (product: UserProduct) => void;
+  /** 重新判断这件的特点（`model-inferred` 的线索，不是已核实的事实）。 */
+  onJudge: (product: UserProduct) => void;
 };
 
 /** 卡片左侧的品类色块：按顺序轮换三种品牌色。 */
@@ -37,7 +39,8 @@ export function LibraryView({
   onCategoryChange,
   onCreate,
   onEdit,
-  onDelete
+  onDelete,
+  onJudge
 }: LibraryViewProps) {
   return (
     <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8 lg:px-12">
@@ -98,6 +101,12 @@ export function LibraryView({
                       <h2 className="mt-1 truncate text-base font-semibold text-[#322e2b]" title={product.name}>
                         {product.name}
                       </h2>
+                      {/* 预设条目要能一眼认出来：顾问会把它当成已有品来给建议。 */}
+                      {product.recordSource === "preset" ? (
+                        <span className="mt-1.5 inline-block rounded-full bg-[#fdf1dc] px-2 py-0.5 text-[10px] font-medium text-[#9a7b45]">
+                          示例
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <button
@@ -122,6 +131,20 @@ export function LibraryView({
                       {tag}
                     </span>
                   ))}
+                  {/* 特点还没判断出来时，卡片上要有个入口——录入不阻断保存，所以这条
+                      路径是常规的，不是异常。 */}
+                  {Object.keys(product.attributes ?? {}).length === 0 &&
+                  !product.colorFamily &&
+                  !product.finish &&
+                  !product.texture ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-dashed border-[#d8c4a4] px-2.5 py-1 text-[11px] text-[#9a7b45] hover:bg-[#fdf7ec]"
+                      onClick={() => onJudge(product)}
+                    >
+                      判断特点
+                    </button>
+                  ) : null}
                 </div>
 
                 {product.notes ? (
