@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sourcesAfterEdit } from "../../lib/kit/attributes.ts";
 import {
   createUserProduct,
   createUserProducts,
@@ -161,4 +162,39 @@ test("retired 不进 listUserProducts，但仍留在全量里", async () => {
     assert.deepEqual(await listUserProducts("local-user"), []);
     assert.equal((await listAllUserProducts("local-user"))[0]?.id, product.id);
   });
+});
+
+test("编辑后只有被改过的属性转 user，其余保留原来源", () => {
+  const previous = { colorFamily: "正红", finish: "哑光", pigmentation: "浓郁" };
+  const previousSources = {
+    colorFamily: { source: "model-inferred" as const },
+    finish: { source: "model-inferred" as const },
+    pigmentation: { source: "user" as const }
+  };
+
+  // 表单保存会把所有字段一起提交——这是常态，不是异常。
+  const sources = sourcesAfterEdit(previous, { colorFamily: "砖红", finish: "哑光", pigmentation: "浓郁" }, previousSources);
+
+  assert.equal(sources.colorFamily?.source, "user", "改过的那个才转 user");
+  assert.equal(sources.finish?.source, "model-inferred", "没改的必须留着原来源");
+  assert.equal(sources.pigmentation?.source, "user", "本来就是用户填的，不动");
+});
+
+test("从无到有算改过；清空的键连来源一起去掉", () => {
+  const added = sourcesAfterEdit({ finish: "哑光" }, { finish: "哑光", coverage: "高" }, {});
+  assert.equal(added.coverage?.source, "user");
+  assert.equal(added.finish, undefined, "原来没有来源就仍然没有，不猜一个出来");
+
+  const cleared = sourcesAfterEdit({ finish: "哑光" }, { finish: "" }, { finish: { source: "user" } });
+  assert.equal(cleared.finish, undefined, "值都没了，留着来源没意义");
+});
+
+test("编辑不改动没提交的键的来源", () => {
+  const sources = sourcesAfterEdit(
+    { colorFamily: "正红", finish: "哑光" },
+    { colorFamily: "正红" },
+    { colorFamily: { source: "model-inferred" }, finish: { source: "user" } }
+  );
+  assert.equal(sources.colorFamily?.source, "model-inferred");
+  assert.equal(sources.finish?.source, "user");
 });

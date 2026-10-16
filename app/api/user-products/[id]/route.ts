@@ -1,5 +1,5 @@
-import { deleteUserProduct, getUserProduct, updateUserProduct } from "@/lib/storage/user-products";
-import type { AttributeSourceRecord } from "@/lib/types/domain";
+import { sourcesAfterEdit } from "@/lib/kit/attributes";
+import { deleteUserProduct, getUserProduct, mergeAttributes, updateUserProduct } from "@/lib/storage/user-products";
 
 export const runtime = "nodejs";
 
@@ -20,18 +20,12 @@ export async function PATCH(
     return Response.json({ error: "没有找到这个妆匣产品。" }, { status: 404 });
   }
 
-  // 用户改了某个属性就说明这条特点是他自己的声明了，来源转 `user`——与「模型推断」
-  // 必须分得开，否则模型会把猜的当查到的讲（规格第 6.6 节）。
-  // 显式传了 attributeSources 的调用方（判断接口）以它为准。
+  // 只有**真的被改过**的属性才转 `user`。表单保存会把所有字段一起提交（用户看到的是
+  // 填好的旧值），照单全收地标成「用户确认」会让一处小改抹掉整条记录的来源区别
+  // （规格第 6.6 节）。显式传了 attributeSources 的调用方（判断接口）以它为准。
   const attributes = input.attributes as Record<string, string> | undefined;
   if (attributes && !input.attributeSources) {
-    const sources: Record<string, AttributeSourceRecord> = { ...(current.attributeSources ?? {}) };
-    for (const [key, value] of Object.entries(attributes)) {
-      if (typeof value === "string" && value.trim()) {
-        sources[key] = { source: "user", at: new Date().toISOString() };
-      }
-    }
-    input.attributeSources = sources;
+    input.attributeSources = sourcesAfterEdit(mergeAttributes(current), attributes, current.attributeSources ?? {});
   }
 
   const product = await updateUserProduct(userId, id, input);

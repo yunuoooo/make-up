@@ -591,6 +591,10 @@ pi 支持重复的 `--skill`（`cli/args.js:142-145` 累积进数组，帮助文
 
 4. **多了一个 `KIT_LIST_LIMIT`（默认 60）。** 原稿没写返回条数上限，但把整个妆匣塞进上下文是无界的，超限时截断并在 payload 里如实说明（`truncated: true` + 「传 categoryId 缩小范围」）。
 
+5. **逐属性来源不能照单全收。** 第 6.6 节原本没写清「编辑时哪些键转 `user`」。实现后真机一测就露了：表单保存会把**所有**字段一起提交（用户看到的是填好的旧值），于是改一个色系就把三个属性全标成 `user`，「模型推断的线索」与「用户的声明」当场没了区别。新增 `sourcesAfterEdit`（值变了才转 `user`，没变保留原来源，清空的键连来源一起去掉），放在 `lib/kit/attributes.ts` 里以便测试。
+
+6. **`GET /api/user-products` 也要用严格读。** 原稿只要求**工具**区分 `empty` 与 `read-failed`。但同一个坏文件下，界面会显示「库还是空的」，用户接着录一件，写入就把坏文件覆盖成只剩这一件——`readJson` 的宽容语义把这件事变成静默的数据丢失。所以 GET 改用与工具同一个 `loadKitProducts`：坏文件返回 500 + 明确原因，界面弹「读取妆匣失败」而不是假装空库。健康路径行为不变（空库仍是 200 + `[]`）。
+
 另外两处命名/结构上的落地选择：来源字段在存储里叫 `attributeSources`、记录来源叫 `recordSource`（避免与工具返回体顶层的 `source` 撞名）；`IS_LIBRARY_OPEN` 与 `LibraryComingSoon` **连开关一起删了**，而不是按原稿说的「改成 true」——理由见下。
 
 ### 为什么删掉 `IS_LIBRARY_OPEN` 而不是打开它
@@ -606,8 +610,9 @@ pi 支持重复的 `--skill`（`cli/args.js:142-145` 累积进数组，帮助文
 | 验收项（第 10.2 节） | 结果 |
 | --- | --- |
 | `npm run typecheck` | ✅ |
-| `npm run test:l1` | ✅ 186 通过，其中妆匣相关新增 **53** 条：词汇 8（`kit-vocabulary`）、存储 8（`kit-storage`）、工具 9（`kit-source-extension`）、预设 9（`kit-preset`）、导入 11（`kit-import`）、技能契约 8（`skill-contracts`）；原有用例全绿 |
+| `npm run test:l1` | ✅ 189 通过，其中妆匣相关新增 **56** 条：词汇 8（`kit-vocabulary`）、存储 11（`kit-storage`）、工具 9（`kit-source-extension`）、预设 9（`kit-preset`）、导入 11（`kit-import`）、技能契约 8（`skill-contracts`）；原有用例全绿 |
 | `npm run build` | ✅ 路由含 `/api/user-products/preset`、`/import`、`/import/commit`、`/[id]/judge` |
+| 起真实服务跑接口（`next start` + 临时 `LOOKTRACE_DATA_DIR`） | ✅ 空库 GET 200 / `[]`；只填品牌+品类 POST 201（原先必填产品名）；导入提交 201 且 `retired` 条目不进列表；清空示例 `removed: 0` 不动自有条目；PATCH 改一个属性**只有该键**转 `user`；坏文件 GET 500 + 原因；缺品牌 400 |
 | `DEPLOY_DRY_RUN=1 ./scripts/deploy.sh` | ✅ 两个技能都在，两个扩展都加载成功（`errors=0`），妆匣工具返回 `availability=empty` |
 | 扩展能通过 pi 的 **jiti** 加载器 | ✅ 真加载器实测（node 的解析器不等于 jiti，这一步是本轮唯一不能靠 L1 覆盖的接线） |
 | 技能契约守卫 | ✅ 商品块 / 色号待试 / 不给链接 / 无 `node scripts/` / 相对引用都存在 |

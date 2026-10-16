@@ -198,6 +198,38 @@ export function attributePrompt(categoryId: KitCategoryId): { id: KitAttributeId
   }));
 }
 
+/**
+ * 一次编辑之后，每个属性的来源该怎么记。
+ *
+ * **只有真的被改过的键才转 `user`。** 表单保存时会把所有字段一起提交（用户看到的
+ * 是填好的旧值），如果照单全收地标成 `user`，一处小改就会把整条记录变成「用户确认」，
+ * 第 6.6 节那条「模型推断的线索」与「用户的声明」的区别当场就没了。
+ *
+ * - 值变了（含从无到有）→ `user`
+ * - 值没变 → 保留原来的来源；原来没有来源就仍然没有（未知就是未知，不猜）
+ * - 清空了的键 → 从来源表里去掉（值都没了，留着来源没意义）
+ */
+export function sourcesAfterEdit(
+  previous: Record<string, string>,
+  next: Record<string, string | undefined>,
+  previousSources: Record<string, AttributeSourceRecord> = {},
+  now: string = new Date().toISOString()
+): Record<string, AttributeSourceRecord> {
+  const sources: Record<string, AttributeSourceRecord> = { ...previousSources };
+
+  for (const [key, rawValue] of Object.entries(next)) {
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (!value) {
+      delete sources[key];
+      continue;
+    }
+    if (previous[key] === value) continue;
+    sources[key] = { source: "user", at: now };
+  }
+
+  return sources;
+}
+
 /** 品类中文名，界面与提示词共用。 */
 export function categoryLabel(categoryId: KitCategoryId): string {
   return findCategory(categoryId).name;
