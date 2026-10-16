@@ -23,10 +23,17 @@ export type KitState = {
   presetSeeded?: Record<string, boolean>;
 };
 
+/**
+ * 播种开关。**默认开**：预设内容是逐条核实过的真实商品（见 `preset-data.ts`），
+ * 它不花上游的钱、只写本地存储，所以缺省就该生效——`KIT_PRESET_ENABLED=false`
+ * 是**关掉它**的开关，不是打开它的开关。
+ *
+ * 与 `TAOBAO_CARDS_ENABLED` 的严格 opt-in 口径不同是有意的：那个一开就按次计费，
+ * 这个不会。规格第 5.1 节的原文就是「默认 true」。
+ */
 export function presetEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  // 与 TAOBAO_CARDS_ENABLED 同一套口径：只有明确的 true / 1 才算打开。
   const value = (env.KIT_PRESET_ENABLED ?? "").trim().toLowerCase();
-  return value === "true" || value === "1";
+  return value !== "false" && value !== "0";
 }
 
 function toInput(product: PresetProduct) {
