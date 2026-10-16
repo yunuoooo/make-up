@@ -5,21 +5,17 @@ import type { ProductFormState } from "./types";
 
 export const CURRENT_USER_ID = "local-user";
 
-/**
- * 妆匣的开放开关。
- *
- * 2026-10-16 打开（规格 `docs/specs/10-16-makeup-kit.md` 决策 4）：Agent 现在能通过
- * `kit_list_products` 读到妆匣，录入与筛选因此恢复。关闭期间进去只看到占位卡。
- */
-export const IS_LIBRARY_OPEN: boolean = true;
+// 这里曾有一个 IS_LIBRARY_OPEN（`7bf70b5` 加的软关闭开关，把妆匣挡在「暂未开放」
+// 占位后面）。2026-10-16 连着占位页一起删了：妆匣已经是 Agent 的输入（`kit_list_products`），
+// 一个只藏界面、不挡 Agent 读库的开关会变成更坏的中间态——页面看着是关的，顾问照样在用
+// 用户没录入过的数据。要再关，得同时决定 Agent 侧怎么办，那是新决定，不是翻这个开关。
 
 /**
  * 品类筛选项。**从 `lib/kit/categories.ts` 派生，不要在这里另写一份**——
- * 技能文本、工具层归一化和这里必须是同一套（规格第 7.1 节）。
+ * 技能文本、工具层归一化和这里必须是同一套（规格 `docs/specs/10-16-makeup-kit.md` 第 7.1 节）。
  * 顺序由那边的 `KIT_CATEGORIES` 决定，前端筛选与历史数据都依赖它。
  */
 export const CATEGORY_OPTIONS: string[] = [...KIT_CATEGORY_NAMES];
-
 export const SUGGESTED_PROMPTS = [
   "韩系氧气妆",
   "清冷通勤妆",

@@ -98,6 +98,12 @@ export function LibraryView({
                       <h2 className="mt-1 truncate text-base font-semibold text-[#322e2b]" title={product.name}>
                         {product.name}
                       </h2>
+                      {/* 预设条目要能一眼认出来：顾问会把它当成已有品来给建议。 */}
+                      {product.recordSource === "preset" ? (
+                        <span className="mt-1.5 inline-block rounded-full bg-[#fdf1dc] px-2 py-0.5 text-[10px] font-medium text-[#9a7b45]">
+                          示例
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <button

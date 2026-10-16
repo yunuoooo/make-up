@@ -20,6 +20,7 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
+  const [isClearingPreset, setIsClearingPreset] = useState(false);
 
   const loadProducts = useCallback(async () => {
     const response = await fetch(`/api/user-products?userId=${userId}`, { cache: "no-store" });
@@ -120,6 +121,34 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
     [products]
   );
 
+  /** 还是示例（`recordSource: "preset"`）的条目。存量为空时按「不是示例」处理。 */
+  const presetProducts = useMemo(
+    () => products.filter((product) => product.recordSource === "preset"),
+    [products]
+  );
+
+  /** 一键清空示例。只删预设条目，自己录的和导入的一条都不动（服务端按来源过滤）。 */
+  const clearPreset = useCallback(async () => {
+    setIsClearingPreset(true);
+    try {
+      const response = await fetch(`/api/user-products/preset?userId=${userId}`, { method: "DELETE" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast.error(data?.error ?? "清空示例妆匣失败。");
+        return false;
+      }
+      await loadProducts();
+      // 清空之后不会再播种（播种标记在第一次播种时就落下了），所以这句是真的。
+      toast.success("示例妆匣已清空，不会再自动出现");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "清空示例妆匣失败。");
+      return false;
+    } finally {
+      setIsClearingPreset(false);
+    }
+  }, [loadProducts, userId]);
+
   const filteredProducts = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
     return products.filter((product) => {
@@ -157,6 +186,9 @@ export function useBeautyKit({ userId, onError }: UseBeautyKitOptions) {
     resetProductForm,
     editProduct,
     saveProduct,
-    deleteProduct
+    deleteProduct,
+    presetProducts,
+    clearPreset,
+    isClearingPreset
   };
 }
