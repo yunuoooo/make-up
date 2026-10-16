@@ -1,6 +1,6 @@
 # 妆匣：把用户已有的化妆品变成推荐的输入
 
-Status: Draft（未实现）
+Status: **Implemented（2026-10-16）**——读路径、预设播种、粘贴导入、技能接入都已落地；预设**内容**为空、`KIT_PRESET_ENABLED` 默认关闭，真起 pi 进程的两条链路未验证（见第 13 节）
 Date: 2026-10-16
 Related specs: [001-mvp.md](./001-mvp.md)（妆匣的原始定位、字段与 API 草案）· [09-17-pi-skill-runtime.md](./09-17-pi-skill-runtime.md)（技能加载链路，本文扩到两个技能）· [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md)（`looktrace-products` 块与商品卡片，**本文只要求它保留，不改它**）· [09-24-tikhub-xhs-ssot.md](./09-24-tikhub-xhs-ssot.md)（取数端点，本文只引用）
 
@@ -576,3 +576,49 @@ pi 支持重复的 `--skill`（`cli/args.js:142-145` 累积进数组，帮助文
 - 它要解决的问题（属性可信度）已经由第 6.6 节的逐属性来源表达了：判断结果是 `model-inferred`，Agent 在**真正需要判断复用**时按技能做一次检索核实。花钱的时机从「录入时一律查」挪到「决策时按需查」。
 
 **遗留情报**：`lib/xhs/tikhub.ts` 是可被服务端直接 import 的普通模块（扩展就是用相对路径 import 它的），所以「服务端直接检索」在技术上一直可行——门槛不是能不能，而是**闸门归谁**。要做这条，先把预算与详情上限从扩展里抽成共用模块，否则就是同一上游两套纪律。
+
+## 13. 实施记录（2026-10-16）
+
+实现落在分支 `feat/makeup-kit`，分五个提交：词表与存储 → 只读读路径 + `makeup-kit` 技能 → advisor 三方合并 + 契约守卫 → 预设与开门 → 判断与导入。第 9 节的改动清单已按实际实现更新。
+
+### 实现期间发现的四处需要偏离原稿的地方
+
+1. **`readJson` 分不出「空」与「坏」。** 它对**任何**失败都返回 fallback，所以一个被截断的 `user-products.json` 会读成 `[]`——「读不到」于是伪装成「妆匣是空的」，正好是第 4.2 节最要防的那件事。新增 `readJsonChecked`（区分 `missing` / `corrupt`），**只有妆匣这条路径用它**，`readJson` 的语义一个字没改，存量调用方零影响。
+
+2. **`empty` 的判定比原稿宽。** 原文说 `empty` 是「成功读取，但这个用户的妆匣是空的」。实现时发现还有一种同义情况：文件在、但按 `userId` 过滤后没有可用记录（全是别人的、或全是 `retired`）。对模型来说这与「空妆匣」是同一句话，所以 `loadKitProducts` 一并归到 `empty`；`ok` + 0 条只出现在**带 `categoryId` 过滤**时（`reason: kit-no-category`）。
+
+3. **`colorFamily` 是开放维度。** 第 7.2 节原文写「取值是闭集」，实现时按技能自己的判例（`matching-cases.md` 的「烈焰红唇 vs 橘色嘴唇」）改成**推荐词表 + 语义比对**：色系的合法取值本质开放，硬套闭集只会把真话挤成错话。其余维度仍是严格闭集，`AttributeSpec.strict` 区分两者。
+
+4. **多了一个 `KIT_LIST_LIMIT`（默认 60）。** 原稿没写返回条数上限，但把整个妆匣塞进上下文是无界的，超限时截断并在 payload 里如实说明（`truncated: true` + 「传 categoryId 缩小范围」）。
+
+另外两处命名/结构上的落地选择：来源字段在存储里叫 `attributeSources`、记录来源叫 `recordSource`（避免与工具返回体顶层的 `source` 撞名）；`IS_LIBRARY_OPEN` 与 `LibraryComingSoon` **连开关一起删了**，而不是按原稿说的「改成 true」——理由见下。
+
+### 为什么删掉 `IS_LIBRARY_OPEN` 而不是打开它
+
+原稿（决策 4）只说要打开。实现时判断留着这个开关会更坏：它只藏界面、**不挡 Agent 读库**，所以关掉之后页面显示「暂未开放」而顾问照样在用用户没录入过的数据——比开门和比真关门都差。要再关，得同时决定 Agent 侧怎么办，那是新决定，不是翻这个开关。`frontend/lib/constants.ts` 留了注释记这件事。
+
+### 第三处必须保住的契约：不给可点链接
+
+第 8.2 节的「拒绝」表原本列了四条，实现三方合并时发现还有一条：上游新版把来源标注从「站内复搜关键词（本轮不给可点链接）」改成了「附笔记链接」。仓库这边验证过拼出来的 `https://www.xiaohongshu.com/explore/<id>` **打不开**，而且我们的工具返回里根本没有可用的笔记链接，所以这条按仓库版本保留，并加进了 `test/L1/skill-contracts.test.ts`。
+
+### 验证结果
+
+| 验收项（第 10.2 节） | 结果 |
+| --- | --- |
+| `npm run typecheck` | ✅ |
+| `npm run test:l1` | ✅ 186 通过，其中妆匣相关新增 **53** 条：词汇 8（`kit-vocabulary`）、存储 8（`kit-storage`）、工具 9（`kit-source-extension`）、预设 9（`kit-preset`）、导入 11（`kit-import`）、技能契约 8（`skill-contracts`）；原有用例全绿 |
+| `npm run build` | ✅ 路由含 `/api/user-products/preset`、`/import`、`/import/commit`、`/[id]/judge` |
+| `DEPLOY_DRY_RUN=1 ./scripts/deploy.sh` | ✅ 两个技能都在，两个扩展都加载成功（`errors=0`），妆匣工具返回 `availability=empty` |
+| 扩展能通过 pi 的 **jiti** 加载器 | ✅ 真加载器实测（node 的解析器不等于 jiti，这一步是本轮唯一不能靠 L1 覆盖的接线） |
+| 技能契约守卫 | ✅ 商品块 / 色号待试 / 不给链接 / 无 `node scripts/` / 相对引用都存在 |
+
+### 仍未验证
+
+- **真起 pi 进程的两条链路**：`kit_list_products` 在一次真实对话里被调用（L3），以及 `lib/kit/judge.ts` 的单发调用真的能取回可用 JSON（`--mode json` 下 `message_end` 的取法与 `--no-session` 的干净程度）。本轮按约定不做 L3，两条都只覆盖到调用前后的纯逻辑与落库路径。**第 12.6 节因此仍未关闭。**
+- **预设套件的内容**：`lib/kit/preset-data.ts` 是空的，`KIT_PRESET_ENABLED` 默认 `false`。播种机制、幂等、清空不重播都有测试（用夹具注入），但真实选品一条都还没核实——决策 1 的用户可见效果因此**尚未上线**。
+- **`base` 品类放什么**（第 12.2 节）与**属性词表的取值够不够用**（第 12.4 节）：都要等真实推荐跑几轮才知道。
+- **决策 6（不回写）的代价**（第 12.3 节）：现在能看清的是「同一件产品每轮都要重新核实」，但占比没有数据。
+
+### 死代码清理仍不在本次范围
+
+`OwnedProductMatch` / `AgentAnswer` / `SearchPlan` / `SkuCandidate` / `ToolRun` / `LookFeatureSet` / `EvidenceItem` / `SourceItem` 都没有消费者，本次没删也没复活（附录 A.3）。
