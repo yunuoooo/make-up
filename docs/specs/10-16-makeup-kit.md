@@ -640,6 +640,23 @@ pi 支持重复的 `--skill`（`cli/args.js:142-145` 累积进数组，帮助文
 | 扩展能通过 pi 的 **jiti** 加载器 | ✅ 真加载器实测（node 的解析器不等于 jiti，这一步是本轮唯一不能靠 L1 覆盖的接线） |
 | 技能契约守卫 | ✅ 商品块 / 色号待试 / 不给链接 / 无 `node scripts/` / 相对引用都存在 |
 
+### ✅ 2026-10-17：已发布到生产并逐项验证
+
+分支 `feat/makeup-kit` 合入 main（合并提交 `67e97b8`），CI 发布成功。生产（`47.90.149.155`）验证：
+
+| 项 | 结果 |
+| --- | --- |
+| 发布树 / 回滚 | `/srv/make-up` 已换新（10-17 00:49），`/srv/make-up.prev` 留着 09-29 那版 |
+| 服务 | `looktrace.service` active，`:3000` 持有者 `cwd=/srv/make-up`，首页 200 |
+| 配置与数据软链 | `.env` → `/srv/make-up-shared/.env`、`.local-data` → shared ✓ |
+| 两个技能 + 两个扩展 | `preflight --extension`：`errors=0`，技能 = advisor + makeup-kit |
+| 首次 GET 播种 | 空数据目录 → **10 件**，全部 `recordSource: preset`，9 个品类；`kit-state.json` 落下 `presetSeeded.local-user` |
+| 妆匣工具在生产数据上 | `availability=ok`（播种前是 `empty`） |
+
+**同一批还改了生产的一处配置**（用户要求，与本次功能无关）：`/srv/make-up-shared/.env` 的 `TAOBAO_CARDS_ENABLED` 由 `"1"` 改为 `"false"`，备份 `.env.bak-20261017-004715`（600），diff 确认只有该行变化；部署重启后生效，`preflight --env` 显示「淘宝卡片: 关」。
+
+> ⚠️ **演示时要知道的后果**：卡片关掉之后，答案末尾的 `looktrace-products` 块照旧产出（技能契约没变），但系统不会再拿它去查淘宝补全商品图和购买链接——所以**界面上不会出现商品卡片**。要演示卡片就得把那个开关打开，而它是**按次计费**的：一轮妆容要打好几次搜索和详情。见 [09-21-taobao-product-cards.md](./09-21-taobao-product-cards.md)。
+
 ### 仍未验证
 
 - **真起 pi 进程的两条链路**：~~`kit_list_products` 在一次真实对话里被调用~~、~~`lib/kit/judge.ts` 的单发调用真的能取回可用 JSON~~ → **2026-10-17 两条都实测通过**，见下。
