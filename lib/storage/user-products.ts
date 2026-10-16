@@ -1,7 +1,9 @@
 import { deriveIntensity, type AttributeSourceRecord, type LookIntensity } from "../kit/attributes.ts";
 import { findCategory, normalizeCategoryId, type KitCategoryId } from "../kit/categories.ts";
-import { makeId, readJson, writeJson } from "./json-store.ts";
-import type { ProductRecordSource, ProductStatus, UserProduct } from "@/lib/types/domain";
+import { makeId, readJson, readJsonChecked, writeJson } from "./json-store.ts";
+// 相对路径而不是 `@/`：整条链子都会被 pi 的 jiti 加载（见下面的注释），
+// 仓库别名在那边解析不了。`lib/types/domain.ts` 自己也只做类型导入。
+import type { ProductRecordSource, ProductStatus, UserProduct } from "../types/domain.ts";
 
 const fileName = "user-products.json";
 
@@ -157,6 +159,37 @@ export async function listUserProducts(userId = "local-user"): Promise<UserProdu
 export async function listAllUserProducts(userId = "local-user"): Promise<UserProduct[]> {
   const products = await readJson<UserProduct[]>(fileName, []);
   return products.filter((product) => product.userId === userId);
+}
+
+export type KitLoadResult =
+  | { status: "ok"; products: UserProduct[] }
+  /** 文件不存在：**成功读取，这个用户确实还没有妆匣**。 */
+  | { status: "empty" }
+  /** 文件在但读不懂：**没取得数据**，不能当成空妆匣。 */
+  | { status: "read-failed"; error: string };
+
+/**
+ * 妆匣的读取入口，专供 `kit_list_products` 使用。
+ *
+ * 「文件不存在」与「文件坏了」必须分开：前者可以说「妆匣未记录」，后者只能说
+ * 「本轮没取得妆匣数据」。合并成一个的话，模型会把读不到说成用户没有——这正是
+ * `makeup-kit/SKILL.md:18` 要防的失败模式。
+ *
+ * 文件在、但这个用户没有可用记录（含全是别人的记录、或全是 retired），仍然是
+ * `empty`：对模型来说「成功读取，你的妆匣是空的」是同一件事。
+ */
+export async function loadKitProducts(userId = "local-user"): Promise<KitLoadResult> {
+  const result = await readJsonChecked<UserProduct[]>(fileName);
+  if (result.status === "missing") return { status: "empty" };
+  if (result.status === "corrupt") return { status: "read-failed", error: result.error };
+  if (!Array.isArray(result.data)) {
+    return { status: "read-failed", error: "存储内容不是数组" };
+  }
+  const products = result.data.filter(
+    (product) => product?.userId === userId && product.status !== "retired"
+  );
+  if (products.length === 0) return { status: "empty" };
+  return { status: "ok", products };
 }
 
 export async function createUserProduct(userId: string, input: ProductInput): Promise<UserProduct> {

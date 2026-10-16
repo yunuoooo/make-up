@@ -197,6 +197,8 @@ export function summarizeToolCall(toolName: string, args: any): string {
       return `打开笔记 ${String(value.noteId ?? "").slice(0, 8)}…`;
     case "xhs_source_status":
       return "检查数据源状态";
+    case "kit_list_products":
+      return value.categoryId ? `核对妆匣｜${value.categoryId}` : "核对妆匣";
     default:
       return toolName;
   }
@@ -220,7 +222,12 @@ const REFUSAL_LABELS: Record<string, string> = {
   // 视频详情成功、只是没拿到字幕。三个都是预期内结果，不是故障。
   "no-voice": "视频没有人声",
   "no-transcript": "视频没有字幕",
-  "transcript-failed": "字幕没取到"
+  "transcript-failed": "字幕没取到",
+  // 妆匣读取的三个预期内结果。empty 与 read-failed 分开是有意的：
+  // 「还没录入」和「没读到」对用户的含义完全相反。
+  "kit-empty": "妆匣还没有记录",
+  "kit-no-category": "妆匣未记录该品类",
+  "kit-read-failed": "妆匣没读到"
 };
 
 /** 把工具结果压缩成"看到了什么"：条数、标题、大小，或失败原因。 */
@@ -246,6 +253,21 @@ export function summarizeToolResult(toolName: string, result: unknown, isError?:
     const limits = payload?.limits ?? {};
     const label = payload?.mode === "api" ? "api" : "未启用";
     return `${label} · search ${calls.search ?? 0}/${limits.searchPages ?? "?"} · detail ${calls.detail ?? 0}/${limits.detailLimit ?? "?"}`;
+  }
+  if (toolName === "kit_list_products") {
+    // 正常情况下 empty / read-failed / no-category 已经在上面被 `reason` 接走了。
+    // 这里再挡一次是有意的兜底：万一哪天 payload 少了 `reason`，摘要也绝不能退回
+    // 「妆匣 0 件」——那会把「没读到」显示成「你没有」，正是这套设计要防的事。
+    const availability = payload?.availability;
+    if (availability === "read-failed") return "妆匣没读到";
+    if (availability === "empty") return "妆匣还没有记录";
+    const total = payload?.scope?.total;
+    const returned = payload?.scope?.returned;
+    const category = payload?.scope?.filteredByCategory;
+    if (typeof total !== "number") return size(text);
+    return category
+      ? `妆匣 ${total} 件，${category} ${returned ?? 0} 件`
+      : `妆匣 ${total} 件`;
   }
   if (toolName === "read") {
     return size(text);

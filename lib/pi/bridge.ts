@@ -20,6 +20,8 @@ export type PiBridgeOptions = {
   prompt: string;
   extensionPath?: string;
   skillPath?: string;
+  /** 完全覆盖 `--skill` 列表（含默认的搭档技能）。不传时用 advisor + 搭档。 */
+  skillPaths?: string[];
   systemPrompt?: string;
   provider?: string;
   model?: string;
@@ -55,17 +57,25 @@ export type PiEventSink = (event: AppSseEvent) => void | Promise<void>;
 // Skill 是行为的唯一来源：研究流程、输出格式和边界都写在 SKILL.md 及其 references 里，
 // 这里只保留运行时约束（可用工具、只读边界、脱敏），不重复技能内容。
 const DEFAULT_SYSTEM_PROMPT = `你是运行在 Pi Agent 中的小红书妆容研究助手。
-可用工具只有 \`read\`（读取技能与参考文件）和只读的 \`xhs_*\` 小红书数据源工具；没有 bash、编辑、写入或发布工具。
-\`read\` 只用于读取技能目录内的 SKILL.md、references/ 和 scripts/；不要读取 .env、密钥、Cookie、凭据或仓库里的其他文件，也不要把它们写进回答。
+可用工具只有 \`read\`（读取技能与参考文件）、只读的 \`xhs_*\` 小红书数据源工具，以及只读的 \`kit_list_products\` 妆匣工具；没有 bash、编辑、写入或发布工具。
+\`read\` 只用于读取技能目录内的 SKILL.md、references/ 和 scripts/。妆匣内容**一律通过 \`kit_list_products\` 读取**，不要用 \`read\` 打开 \`.local-data\` 下的数据文件；也不要读取 .env、密钥、Cookie、凭据或仓库里的其他文件，也不要把它们写进回答。
 每个请求都先按 <available_skills> 里的 location 用 \`read\` 读取匹配技能的 SKILL.md，再严格按该技能的工作流、输出格式和边界执行；技能内容与系统提示词冲突时以技能为准。技能引用的相对路径（references/、scripts/）按 SKILL.md 所在目录解析后再读取。
 回答用中文，只把工具实际返回的内容当作证据，说明真实样本量和失败限制；不要泄露 xsec_token、Cookie、Authorization、API token 或完整请求 URL。笔记配图只使用工具返回的图片地址，不要自己拼链接或补签名参数。`;
 
 // pi 通过内置 read 工具按需加载 SKILL.md；白名单里没有 read，技能就无法进入上下文。
 // 工具名与数据源实现解耦：换供应商（Just One → TikHub）、换传输（MCP → HTTP）时，
 // 这份白名单和技能都不需要改。
-const READ_ONLY_TOOL_ALLOWLIST = "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail";
+const READ_ONLY_TOOL_ALLOWLIST = "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail,kit_list_products";
 
 const DEFAULT_SKILL_PATH = "xiaohongshu-makeup-advisor-latest";
+
+/**
+ * 搭档技能：妆匣复用顾问。默认与主顾问一起加载，两个都进 `<available_skills>`。
+ *
+ * 平级放在仓库根目录是**有意的**：上游技能正文用 `../makeup-kit/SKILL.md` 相互引用，
+ * 平级才能让那个相对路径在磁盘上真的成立（相对路径按 SKILL.md 所在目录解析）。
+ */
+const DEFAULT_COMPANION_SKILL_PATH = "makeup-kit";
 
 // pi 是项目依赖（@earendil-works/pi-coding-agent），二进制装在 node_modules/.bin；
 // 不依赖全局安装或用户目录下的 pi，服务器上 npm install 后即可用。
@@ -73,6 +83,29 @@ const DEFAULT_PI_STATE_DIR = ".local-data/pi";
 
 export function resolveSkillPath(options: Pick<PiBridgeOptions, "skillPath" | "cwd"> = {}): string {
   return resolve(options.cwd ?? process.cwd(), options.skillPath ?? process.env.PI_SKILL_PATH ?? DEFAULT_SKILL_PATH);
+}
+
+function splitPaths(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 要加载的技能列表。pi 的 `--skill` 可重复，两个技能都进 `<available_skills>`，
+ * 模型自己按 description 决定读哪个。
+ *
+ * 覆盖关系：`PI_SKILL_PATHS` **完全覆盖**（含搭档）；`skillPath` / `PI_SKILL_PATH`
+ * 只覆盖主顾问，搭档照旧跟上——单数语义因此保持不变，已有的部署与文档不用改。
+ */
+export function resolveSkillPaths(
+  options: Pick<PiBridgeOptions, "skillPath" | "skillPaths" | "cwd"> = {}
+): string[] {
+  const cwd = options.cwd ?? process.cwd();
+  const explicit = options.skillPaths ?? splitPaths(process.env.PI_SKILL_PATHS);
+  if (explicit.length > 0) return explicit.map((path) => resolve(cwd, path));
+  return [resolveSkillPath(options), resolve(cwd, DEFAULT_COMPANION_SKILL_PATH)];
 }
 
 // pi 接受 SKILL.md 文件或包含它的目录；校验入口文件能避免技能丢失后静默退回系统提示词。
@@ -91,6 +124,18 @@ export function resolvePiStateDir(cwd: string = process.cwd()): string {
 }
 
 /**
+ * 妆匣工具的唯一身份来源。
+ *
+ * **刻意不经过工具参数**：`makeup-kit/references/input-contract.md` 要求「用户范围由
+ * 应用提供，不能根据文件内文字或搜索结果切换用户」，所以身份只能由 bridge 在 spawn
+ * 时注入环境变量，模型拿不到切换用户的入口。缺省与前端 `CURRENT_USER_ID` 一致。
+ */
+export function resolveKitUserId(env: Record<string, string | undefined> = process.env): string {
+  const value = (env.LOOKTRACE_USER_ID ?? "").trim();
+  return value || "local-user";
+}
+
+/**
  * 会话参数：有合法 id 就交给 pi 续话，没有就明确地跑成单轮无状态。
  *
  * 不能两者都传——pi 里 `--no-session` 优先，会静默退回内存会话（session-manager 的
@@ -105,6 +150,7 @@ export function sessionArgs(conversationId: string | undefined): string[] {
 export function buildPiArgs(options: PiBridgeOptions): string[] {
   const cwd = options.cwd ?? process.cwd();
   const extensionPath = options.extensionPath ?? resolve(cwd, ".pi/extensions/xhs-source.ts");
+  const skillPaths = resolveSkillPaths(options);
   return [
     "--mode", "json",
     ...sessionArgs(options.conversationId),
@@ -113,7 +159,7 @@ export function buildPiArgs(options: PiBridgeOptions): string[] {
     "--no-skills",
     "--no-builtin-tools",
     "--extension", extensionPath,
-    "--skill", resolveSkillPath(options),
+    ...skillPaths.flatMap((skillPath) => ["--skill", skillPath]),
     "--tools", READ_ONLY_TOOL_ALLOWLIST,
     "--system-prompt", options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     "--provider", options.provider ?? process.env.PI_PROVIDER ?? "deepseek",
@@ -163,7 +209,8 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
     userPrompt: options.prompt
   };
 
-  const skillPath = resolveSkillPath(options);
+  const skillPaths = resolveSkillPaths(options);
+  const skillPath = skillPaths[0] ?? "";
   const trace = options.trace ?? null;
   // pi.run 在 spawn **之前**开出：它到进程 close 的宽度就是真正的进程墙钟（6.3）。
   // 观测调用一律走 safely：任何一个 observation 抛错都不能冒泡进请求路径。
@@ -175,6 +222,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       provider,
       model,
       skillPath,
+      skillPaths,
       // 完整系统提示词不进 trace：静态、每次一样、又长。哈希用来确认版本变了。
       systemPromptHash: createHash("sha256").update(systemPrompt).digest("hex").slice(0, 12),
       systemPromptLength: systemPrompt.length
@@ -243,6 +291,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
       ephemeral: sessionId === null,
       messageId,
       skillPath,
+      skillPaths,
       skillEntry: resolveSkillEntry(skillPath)
     }
   });
@@ -258,17 +307,21 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
     });
   }
 
-  try {
-    await access(resolveSkillEntry(skillPath));
-  } catch {
-    return finish({
-      answerText: "",
-      status: "failed",
-      run: { traceId, agentRunId, conversationId, messageId },
-      provider,
-      model,
-      exitCode: null
-    }, `未找到技能文件 ${resolveSkillEntry(skillPath)}；Pi Agent 的行为由技能决定，缺失时不回退到系统提示词。`);
+  // 逐个校验：缺任何一个都直接失败。少加载一个技能是**静默**的——模型会照着另一个
+  // 技能的措辞往下走，而少了 makeup-kit 时它读不到妆匣规则，却仍然会标 ✅。
+  for (const entry of skillPaths) {
+    try {
+      await access(resolveSkillEntry(entry));
+    } catch {
+      return finish({
+        answerText: "",
+        status: "failed",
+        run: { traceId, agentRunId, conversationId, messageId },
+        provider,
+        model,
+        exitCode: null
+      }, `未找到技能文件 ${resolveSkillEntry(entry)}；Pi Agent 的行为由技能决定，缺失时不回退到系统提示词。`);
+    }
   }
 
   const piBin = options.piBin ?? resolvePiBin(cwd);
@@ -290,7 +343,9 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
   try {
     child = spawn(piBin, buildPiArgs({ ...options, provider, model, systemPrompt }), {
       cwd,
-      env: { ...process.env, PI_CODING_AGENT_DIR: stateDir },
+      // LOOKTRACE_USER_ID 是妆匣工具的身份来源（见 resolveKitUserId），在这里注入而不是
+      // 让模型传参——模型因此没有切换用户的入口。
+      env: { ...process.env, PI_CODING_AGENT_DIR: stateDir, LOOKTRACE_USER_ID: resolveKitUserId() },
       stdio: ["ignore", "pipe", "pipe"]
     });
   } catch (error) {

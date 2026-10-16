@@ -6,10 +6,12 @@ import { join } from "node:path";
 import {
   buildPiArgs,
   formatSseEvent,
+  resolveKitUserId,
   resolvePiBin,
   resolvePiStateDir,
   resolveSkillEntry,
   resolveSkillPath,
+  resolveSkillPaths,
   runPiAgent,
   sessionArgs,
   type PiBridgeOptions
@@ -46,13 +48,45 @@ test("builds an isolated Pi command for the read-only XHS runtime", () => {
     "--no-skills",
     "--no-builtin-tools",
     "--extension", "/tmp/xhs-source.ts",
+    // 显式给了 skillPath 就只覆盖主顾问，搭档技能照旧跟上（见 resolveSkillPaths）。
     "--skill", "/tmp/xiaohongshu-makeup-advisor-latest",
-    "--tools", "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail",
+    "--skill", `${process.cwd()}/makeup-kit`,
+    "--tools", "read,xhs_source_status,xhs_search_notes,xhs_get_note_detail,kit_list_products",
     "--system-prompt", "只做只读小红书研究。",
     "--provider", "deepseek",
     "--model", "deepseek-chat",
     "-p", "我想画韩系氧气妆"
   ]);
+});
+
+test("loads both skill directories so the kit rules reach the model", () => {
+  const options = { prompt: "我想画韩系氧气妆", cwd: "/repo" };
+
+  // 两个技能都进 <available_skills>，模型按 description 自己决定读哪个。
+  assert.deepEqual(resolveSkillPaths(options), ["/repo/xiaohongshu-makeup-advisor-latest", "/repo/makeup-kit"]);
+
+  // 单数语义不变：PI_SKILL_PATH 只换主顾问，搭档不丢。
+  withEnv("PI_SKILL_PATH", "/custom/advisor", () => {
+    assert.deepEqual(resolveSkillPaths({ ...options, skillPath: undefined }), ["/custom/advisor", "/repo/makeup-kit"]);
+  });
+
+  // 完全覆盖：PI_SKILL_PATHS 说了算，连搭档也不自动追加。
+  withEnv("PI_SKILL_PATHS", "/a/one,/b/two", () => {
+    assert.deepEqual(resolveSkillPaths({ ...options, skillPath: undefined }), ["/a/one", "/b/two"]);
+  });
+  assert.deepEqual(resolveSkillPaths({ ...options, skillPaths: ["/only/one"] }), ["/only/one"]);
+
+  // 两个技能的 SKILL.md 都必须在仓库里：缺一个模型会照着另一个的措辞往下走。
+  for (const path of resolveSkillPaths({ cwd: process.cwd() })) {
+    assert.ok(existsSync(resolveSkillEntry(path)), `${path} 的 SKILL.md 必须存在`);
+  }
+});
+
+test("injects the kit user id instead of letting the model pick one", () => {
+  // 妆匣工具的身份只认这个环境变量，模型拿不到切换用户的入口。
+  assert.equal(resolveKitUserId({}), "local-user");
+  assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "  " }), "local-user");
+  assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "u_42" }), "u_42");
 });
 
 test("keys the pi session on the conversation id so a follow-up sees the first round", () => {
@@ -90,7 +124,8 @@ test("loads the advisor skill through the read tool instead of the system prompt
     "read",
     "xhs_source_status",
     "xhs_search_notes",
-    "xhs_get_note_detail"
+    "xhs_get_note_detail",
+    "kit_list_products"
   ]);
 
   // The system prompt must defer to the skill rather than restate its workflow.

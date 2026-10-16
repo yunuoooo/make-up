@@ -1,4 +1,6 @@
-import type { AttributeSourceRecord } from "@/lib/kit/attributes";
+// 相对路径 + `.ts`：这条链子会被 pi 的 jiti 加载（`kit-source.ts` → `user-products.ts`
+// → 这里），仓库的 `@/*` 别名在那边解析不了。虽然是 `import type`，也不要改回别名。
+import type { AttributeSourceRecord } from "../kit/attributes.ts";
 
 export type ProductStatus = "owned" | "wishlist" | "retired";
 
