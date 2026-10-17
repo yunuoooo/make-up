@@ -12,6 +12,7 @@ import {
   resolveSkillEntry,
   resolveSkillPath,
   resolveSkillPaths,
+  resolveThinkingLevel,
   runPiAgent,
   sessionArgs,
   type PiBridgeOptions
@@ -55,6 +56,8 @@ test("builds an isolated Pi command for the read-only XHS runtime", () => {
     "--system-prompt", "只做只读小红书研究。",
     "--provider", "deepseek",
     "--model", "deepseek-chat",
+    // 缺省 low，且始终显式传：不传的话 pi 用 medium，而 medium 会被夹成 high。
+    "--thinking", "low",
     "-p", "我想画韩系氧气妆"
   ]);
 });
@@ -87,6 +90,35 @@ test("injects the kit user id instead of letting the model pick one", () => {
   assert.equal(resolveKitUserId({}), "local-user");
   assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "  " }), "local-user");
   assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "u_42" }), "u_42");
+});
+
+test("推理强度可配，缺省 low，非法值不静默生效", () => {
+  // 缺省 low：pi 自己的 medium 在 deepseek 的档位表里不支持，会被夹成 high。
+  assert.equal(resolveThinkingLevel({}), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "   " }), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "LOW" }), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "max" }), "max");
+  // 拼错的档位回落到缺省（另有 warn，preflight 会直接判失败）。
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "loww" }), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "1" }), "low");
+});
+
+test("--thinking 始终传，位置在 -p 之前", () => {
+  const args = buildPiArgs({ ...options, thinking: "high" });
+  assert.equal(args[args.indexOf("--thinking") + 1], "high");
+  // -p 后面全是 prompt，插进去会被当成文本。
+  assert.ok(args.indexOf("--thinking") < args.indexOf("-p"), "--thinking 必须在 -p 之前");
+
+  // 缺省也传 low：不传的话 pi 用 medium，而 medium 会被夹成 high，等于没降。
+  withEnv("PI_THINKING_LEVEL", "", () => {
+    const byDefault = buildPiArgs({ ...options, thinking: undefined });
+    assert.equal(byDefault[byDefault.indexOf("--thinking") + 1], "low");
+  });
+
+  withEnv("PI_THINKING_LEVEL", "high", () => {
+    const args = buildPiArgs({ ...options, thinking: undefined });
+    assert.equal(args[args.indexOf("--thinking") + 1], "high", "环境变量要能被读到");
+  });
 });
 
 test("keys the pi session on the conversation id so a follow-up sees the first round", () => {

@@ -55,6 +55,15 @@ if (wantEnv) {
   if (!(process.env.DEEPSEEK_API_KEY ?? "").trim() && !(process.env.OPENAI_API_KEY ?? "").trim()) {
     warn.push("没有 DEEPSEEK_API_KEY / OPENAI_API_KEY：除非你显式配了别的 PI_PROVIDER，否则模型跑不起来。");
   }
+  // 推理强度拼错不会报错，只会静默回落 pi 的缺省——那正是「配置错了不报错」的典型。
+  // 档位直接决定每轮的思考 token（实测占输出 80%），拼错一个字母就等于没配，所以这里判失败。
+  const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+  const thinking = (process.env.PI_THINKING_LEVEL ?? "").trim().toLowerCase();
+  if (thinking && !THINKING_LEVELS.includes(thinking)) {
+    problems.push(
+      `PI_THINKING_LEVEL="${thinking}" 不是合法档位（${THINKING_LEVELS.join(" / ")}）：运行时它会被当成未配置，静默回落 pi 的缺省。`
+    );
+  }
   if (problems.length) {
     console.error("✗ .env 有 " + problems.length + " 个问题：");
     for (const p of problems) console.error("  - " + p);

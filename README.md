@@ -26,7 +26,8 @@ npm run dev            # http://localhost:3000
 | --- | --- | --- |
 | `DEEPSEEK_API_KEY` | 空 | 模型凭据；不填则 Agent 无法启动 |
 | `PI_PROVIDER` | `deepseek` | Pi 的 provider |
-| `PI_MODEL` | `deepseek-chat` | 模型名 |
+| `PI_MODEL` | `deepseek-v4-flash` | 模型名。**必须在 pi 的目录里**，否则档位表继承不到，`low` 会被夹成 `high` |
+| `PI_THINKING_LEVEL` | `low` | 推理强度。实测 low 比 high 少约 18% 思考 token，墙钟同步降约 18% |
 
 运行时路径一般不用改，需要时用 `PI_BIN` / `PI_CODING_AGENT_DIR` / `PI_SKILL_PATH` 覆盖。
 
