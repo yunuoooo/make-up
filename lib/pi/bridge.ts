@@ -22,6 +22,8 @@ export type PiBridgeOptions = {
   skillPath?: string;
   /** 完全覆盖 `--skill` 列表（含默认的搭档技能）。不传时用 advisor + 搭档。 */
   skillPaths?: string[];
+  /** 推理强度；不传则读 `PI_THINKING_LEVEL`，再没有就交给 pi 自己解析。 */
+  thinking?: ThinkingLevel;
   systemPrompt?: string;
   provider?: string;
   model?: string;
@@ -76,6 +78,33 @@ const DEFAULT_SKILL_PATH = "xiaohongshu-makeup-advisor-latest";
  * 平级才能让那个相对路径在磁盘上真的成立（相对路径按 SKILL.md 所在目录解析）。
  */
 const DEFAULT_COMPANION_SKILL_PATH = "makeup-kit";
+
+/** pi 支持的推理强度档位（`--thinking`）。 */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
+/**
+ * 推理强度。不配就走 pi 自己的解析（缺省 medium，随后按模型能力再夹一次——生产会话
+ * 实际记的都是 `high`）。
+ *
+ * **这是目前最直接的降耗杠杆。** 实测一轮妆容 199 秒里 183.5 秒（92%）是模型生成，
+ * 而其中约 80% 的输出 token 是隐藏的 reasoning——工具只占 28 秒。调低它，省的是
+ * 推理轮次，不是取数时间。
+ *
+ * 非法值**不静默生效**：这里当没配（回落到 pi 的缺省）并留一行 warn；部署时的
+ * `scripts/preflight.mjs --env` 会直接判失败，所以拼错的东西到不了线上。
+ */
+export function resolveThinkingLevel(
+  env: Record<string, string | undefined> = process.env
+): ThinkingLevel | null {
+  const value = (env.PI_THINKING_LEVEL ?? "").trim().toLowerCase();
+  if (!value) return null;
+  if ((THINKING_LEVELS as readonly string[]).includes(value)) return value as ThinkingLevel;
+  console.warn(
+    `[pi] PI_THINKING_LEVEL="${value}" 不是合法档位（${THINKING_LEVELS.join(" / ")}），按未配置处理。`
+  );
+  return null;
+}
 
 // pi 是项目依赖（@earendil-works/pi-coding-agent），二进制装在 node_modules/.bin；
 // 不依赖全局安装或用户目录下的 pi，服务器上 npm install 后即可用。
@@ -151,6 +180,7 @@ export function buildPiArgs(options: PiBridgeOptions): string[] {
   const cwd = options.cwd ?? process.cwd();
   const extensionPath = options.extensionPath ?? resolve(cwd, ".pi/extensions/xhs-source.ts");
   const skillPaths = resolveSkillPaths(options);
+  const thinking = options.thinking ?? resolveThinkingLevel();
   return [
     "--mode", "json",
     ...sessionArgs(options.conversationId),
@@ -164,6 +194,7 @@ export function buildPiArgs(options: PiBridgeOptions): string[] {
     "--system-prompt", options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     "--provider", options.provider ?? process.env.PI_PROVIDER ?? "deepseek",
     "--model", options.model ?? process.env.PI_MODEL ?? "deepseek-chat",
+    ...(thinking ? ["--thinking", thinking] : []),
     "-p", options.prompt
   ];
 }

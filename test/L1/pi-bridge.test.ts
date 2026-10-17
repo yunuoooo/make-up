@@ -12,6 +12,7 @@ import {
   resolveSkillEntry,
   resolveSkillPath,
   resolveSkillPaths,
+  resolveThinkingLevel,
   runPiAgent,
   sessionArgs,
   type PiBridgeOptions
@@ -87,6 +88,35 @@ test("injects the kit user id instead of letting the model pick one", () => {
   assert.equal(resolveKitUserId({}), "local-user");
   assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "  " }), "local-user");
   assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "u_42" }), "u_42");
+});
+
+test("推理强度可配，非法值不静默生效", () => {
+  // 不配 = 交给 pi 自己解析（它缺省 medium，再按模型能力夹一次）。
+  assert.equal(resolveThinkingLevel({}), null);
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "   " }), null);
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "LOW" }), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "max" }), "max");
+  // 拼错的档位按未配置处理（另有 warn，preflight 会直接判失败）。
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "loww" }), null);
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "1" }), null);
+});
+
+test("配了推理强度才传 --thinking，没配不改变 pi 的缺省", () => {
+  const withLevel = buildPiArgs({ ...options, thinking: "low" });
+  assert.equal(withLevel[withLevel.indexOf("--thinking") + 1], "low");
+  // 位置要在 -p 之前：-p 后面全是 prompt，插进去会被当成文本。
+  assert.ok(withLevel.indexOf("--thinking") < withLevel.indexOf("-p"), "--thinking 必须在 -p 之前");
+
+  const without = buildPiArgs({ ...options, thinking: undefined });
+  withEnv("PI_THINKING_LEVEL", "", () => {
+    const args = buildPiArgs({ ...options, thinking: undefined });
+    assert.ok(!args.includes("--thinking"), "没配就不该传 --thinking");
+  });
+
+  withEnv("PI_THINKING_LEVEL", "high", () => {
+    const args = buildPiArgs({ ...options, thinking: undefined });
+    assert.equal(args[args.indexOf("--thinking") + 1], "high", "环境变量要能被读到");
+  });
 });
 
 test("keys the pi session on the conversation id so a follow-up sees the first round", () => {

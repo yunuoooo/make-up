@@ -54,3 +54,51 @@ buildPiArgs --skill <skillDir>
   - 技能只写业务行为：读几篇、输出格式、证据规则、只读边界——由产品决定，改动走正常评审。
 - `PI_CODING_AGENT_DIR` 指向项目内的 `.local-data/pi`，技能通过显式路径加载，不依赖全局技能目录或 `~/.pi`。
 - pi 本身是 `package.json` 的依赖（`@earendil-works/pi-coding-agent`），bridge 默认执行 `node_modules/.bin/pi`；`.pi/extensions/` 里用到的 `typebox` 同样是项目依赖，部署物不依赖任何全局安装。可用 `PI_BIN` 覆盖。
+
+## 6. 推理强度：耗时的主开关（2026-10-17）
+
+### 6.1 时间到底花在哪
+
+从 Langfuse 实测（`us.cloud.langfuse.com`，trace 结构见 [09-22](./09-22-langfuse-observability.md) 第 5.1 节）：**一轮妆容 92% 的墙钟是模型生成，工具只占一成多。** 而且生成时间里约 **70–80% 的输出 token 是隐藏的 reasoning**，不是用户看到的正文。
+
+| 一轮（199.2s） | 秒 |
+| --- | --- |
+| 模型生成 | **183.5（92%）** |
+| 其中最终答案那一次 | 119.2（输出 15,124，思考 11,033） |
+| 工具（10 次详情 + 3 次搜索） | ~28 |
+
+首 token 延迟只有 0.2–1.0 秒、吞吐 127–222 tok/s，说明**不是网络慢也不是排队**，就是模型在持续思考。所以优化工具没有意义，杠杆在推理强度。
+
+### 6.2 `--thinking` 怎么用，以及为什么它对 `deepseek-chat` 没用
+
+pi 支持 `--thinking <off|minimal|low|medium|high|xhigh|max>`，bridge 通过 `PI_THINKING_LEVEL` 透传（`resolveThinkingLevel`），拼错的值不生效且 `preflight.mjs --env` 会直接判失败。
+
+**但档位能不能落地取决于模型声明了什么。** 实测（pi 的模型目录 + 会话文件里的 `thinking_level_change`）：
+
+| 模型 id | 档位表 | 传 `low` 的结果 |
+| --- | --- | --- |
+| `deepseek-v4-flash` | `low / high / max` | ✅ 记成 `low` |
+| `deepseek-v4-pro` | 只有 `high / max` | ❌ 被**向上夹到 `high`** |
+| `deepseek-chat`（我们的缺省） | **不在目录里**，pi 拿 `deepseek-v4-pro` 当模板 | ❌ 同样夹到 `high` |
+
+根因在 pi 的 `buildFallbackModel`：自定义 model id 会克隆 provider 默认模型（`deepseek-v4-pro`）的配置，只改 id/name；而 `clampThinkingLevel` 在请求档位不被支持时**先向上找**最近可用档位，所以 `low` / `medium` 都变成 `high`。pi 自己的缺省档位 `medium` 对这两个模型也不可用——这解释了为什么历史 16 个会话**全部**记的是 `high`。
+
+`deepseek-chat` 不在目录里这件事 [09-25 附录 A.2](./09-25-video-understanding.md) 已经记过一次（当时是查视觉能力），这次是它的第二个后果。
+
+### 6.3 实测 A/B（同一问题、同一妆匣、本地真跑）
+
+| 轮次 | 模型 | 档位 | 耗时 | 输出 token | 其中思考 | 答案字符 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 基线 | `deepseek-chat` | high（夹） | 110.0s | 17,444 | 12,138 | 5,766 |
+| 对照 | `deepseek-v4-flash` | high | 112.1s | 18,203 | 13,097 | 5,716 |
+| 处理 | `deepseek-v4-flash` | **low** | **92.5s** | 15,574 | **10,773** | 5,476 |
+
+**思考 token 降 17.7%，耗时降 17.5%——两者几乎一比一。** 答案长度基本不变（-4%），说明降的是盘算时长，不是内容量。
+
+另外 `deepseek-v4-flash` 的单价是 `deepseek-v4-pro` 的约 **1/3**（0.14/0.28 vs 0.435/0.87），而我们的自定义 id 继承的是 pro 的配置与价格档。
+
+### 6.4 结论与待定
+
+- **要真正降档，`PI_MODEL` 得换成声明了 `low` 的模型**（`deepseek-v4-flash` 或 `deepseek-v4-flash-vision-exp`）。这不是纯配置调整——换模型等于换回答质量，需要单独决定。在换之前，`PI_THINKING_LEVEL=low` 对 `deepseek-chat` 是**无效的**（会被静默夹回 high），所以线上暂时不要指望它。
+- 技能侧也能省：`search-verified` / `user` 的来源已经可信，**不该再让模型为它们盘算要不要重新检索**。`makeup-kit` 里补上这条豁免，属于「别让它重复盘算已经确定的事」。
+- 仍然成立的判断：把已有单品和妆容目标逐件对上本来就要思考，目标不是把思考降到零。
