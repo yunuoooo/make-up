@@ -97,8 +97,15 @@ pi 支持 `--thinking <off|minimal|low|medium|high|xhigh|max>`，bridge 通过 `
 
 另外 `deepseek-v4-flash` 的单价是 `deepseek-v4-pro` 的约 **1/3**（0.14/0.28 vs 0.435/0.87），而我们的自定义 id 继承的是 pro 的配置与价格档。
 
-### 6.4 结论与待定
+### 6.4 结论与已落地的配置
 
-- **要真正降档，`PI_MODEL` 得换成声明了 `low` 的模型**（`deepseek-v4-flash` 或 `deepseek-v4-flash-vision-exp`）。这不是纯配置调整——换模型等于换回答质量，需要单独决定。在换之前，`PI_THINKING_LEVEL=low` 对 `deepseek-chat` 是**无效的**（会被静默夹回 high），所以线上暂时不要指望它。
-- 技能侧也能省：`search-verified` / `user` 的来源已经可信，**不该再让模型为它们盘算要不要重新检索**。`makeup-kit` 里补上这条豁免，属于「别让它重复盘算已经确定的事」。
-- 仍然成立的判断：把已有单品和妆容目标逐件对上本来就要思考，目标不是把思考降到零。
+**已决定（2026-10-17）：`PI_MODEL` 换成 `deepseek-v4-flash`，`PI_THINKING_LEVEL` 默认 `low`**（代码缺省 + `.env.example` 同步）。
+
+- 换模型不是纯配置调整——它等于换回答质量。这次是产品明确选择「先要速度」，**质量退化不再单独验证**。
+- `deepseek-v4-flash` 声明了 `low/high/max`，且单价约是 pro 的三分之一。
+- 缺省值写在 `lib/pi/bridge.ts` 的 `DEFAULT_MODEL` / `DEFAULT_THINKING_LEVEL` 两处，**不要只改 `.env`**：代码缺省是最后一道，两处不一致时行为取决于有没有配环境变量，很难排查。
+- `PI_THINKING_LEVEL` 仍然可覆盖（off / minimal / low / medium / high / xhigh / max）；但换成只支持 high/max 的模型时，low 会被静默夹上去——**换模型前先查它的档位表**（`pi --list-models` 或 `providers/data/<provider>.json`）。
+
+技能侧同步做了一条减法：`search-verified` / `user` 的来源已经可信，**不该再让模型为它们盘算要不要重新检索**（`makeup-kit/SKILL.md` 的检索豁免）。这属于「别让它重复盘算已经确定的事」，与调档位正交。
+
+仍然成立的判断：把已有单品和妆容目标逐件对上本来就要思考，目标不是把思考降到零。

@@ -56,6 +56,8 @@ test("builds an isolated Pi command for the read-only XHS runtime", () => {
     "--system-prompt", "只做只读小红书研究。",
     "--provider", "deepseek",
     "--model", "deepseek-chat",
+    // 缺省 low，且始终显式传：不传的话 pi 用 medium，而 medium 会被夹成 high。
+    "--thinking", "low",
     "-p", "我想画韩系氧气妆"
   ]);
 });
@@ -90,27 +92,27 @@ test("injects the kit user id instead of letting the model pick one", () => {
   assert.equal(resolveKitUserId({ LOOKTRACE_USER_ID: "u_42" }), "u_42");
 });
 
-test("推理强度可配，非法值不静默生效", () => {
-  // 不配 = 交给 pi 自己解析（它缺省 medium，再按模型能力夹一次）。
-  assert.equal(resolveThinkingLevel({}), null);
-  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "   " }), null);
+test("推理强度可配，缺省 low，非法值不静默生效", () => {
+  // 缺省 low：pi 自己的 medium 在 deepseek 的档位表里不支持，会被夹成 high。
+  assert.equal(resolveThinkingLevel({}), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "   " }), "low");
   assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "LOW" }), "low");
   assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "max" }), "max");
-  // 拼错的档位按未配置处理（另有 warn，preflight 会直接判失败）。
-  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "loww" }), null);
-  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "1" }), null);
+  // 拼错的档位回落到缺省（另有 warn，preflight 会直接判失败）。
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "loww" }), "low");
+  assert.equal(resolveThinkingLevel({ PI_THINKING_LEVEL: "1" }), "low");
 });
 
-test("配了推理强度才传 --thinking，没配不改变 pi 的缺省", () => {
-  const withLevel = buildPiArgs({ ...options, thinking: "low" });
-  assert.equal(withLevel[withLevel.indexOf("--thinking") + 1], "low");
-  // 位置要在 -p 之前：-p 后面全是 prompt，插进去会被当成文本。
-  assert.ok(withLevel.indexOf("--thinking") < withLevel.indexOf("-p"), "--thinking 必须在 -p 之前");
+test("--thinking 始终传，位置在 -p 之前", () => {
+  const args = buildPiArgs({ ...options, thinking: "high" });
+  assert.equal(args[args.indexOf("--thinking") + 1], "high");
+  // -p 后面全是 prompt，插进去会被当成文本。
+  assert.ok(args.indexOf("--thinking") < args.indexOf("-p"), "--thinking 必须在 -p 之前");
 
-  const without = buildPiArgs({ ...options, thinking: undefined });
+  // 缺省也传 low：不传的话 pi 用 medium，而 medium 会被夹成 high，等于没降。
   withEnv("PI_THINKING_LEVEL", "", () => {
-    const args = buildPiArgs({ ...options, thinking: undefined });
-    assert.ok(!args.includes("--thinking"), "没配就不该传 --thinking");
+    const byDefault = buildPiArgs({ ...options, thinking: undefined });
+    assert.equal(byDefault[byDefault.indexOf("--thinking") + 1], "low");
   });
 
   withEnv("PI_THINKING_LEVEL", "high", () => {

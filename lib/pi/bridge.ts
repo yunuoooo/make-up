@@ -79,31 +79,49 @@ const DEFAULT_SKILL_PATH = "xiaohongshu-makeup-advisor-latest";
  */
 const DEFAULT_COMPANION_SKILL_PATH = "makeup-kit";
 
+/**
+ * 缺省模型。**必须是 pi 目录里有档位表的 id**。
+ *
+ * `deepseek-chat` 不在目录里，pi 会用 `buildFallbackModel` 克隆 provider 默认模型
+ * （`deepseek-v4-pro`）的配置，只改 id/name——于是档位只剩 high/max，`low` 会被静默
+ * 向上夹到 high（详见 [09-17 第 6 节](../docs/specs/09-17-pi-skill-runtime.md)）。
+ * `deepseek-v4-flash` 声明了 low/high/max，单价约是 pro 的三分之一。
+ */
+export const DEFAULT_MODEL = "deepseek-v4-flash";
+
 /** pi 支持的推理强度档位（`--thinking`）。 */
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 /**
- * 推理强度。不配就走 pi 自己的解析（缺省 medium，随后按模型能力再夹一次——生产会话
- * 实际记的都是 `high`）。
+ * 缺省推理强度。
  *
- * **这是目前最直接的降耗杠杆。** 实测一轮妆容 199 秒里 183.5 秒（92%）是模型生成，
- * 而其中约 80% 的输出 token 是隐藏的 reasoning——工具只占 28 秒。调低它，省的是
- * 推理轮次，不是取数时间。
+ * `low` 而不是 pi 自己的 `medium`：`medium` 在 deepseek 的档位表里是 null（不支持），
+ * 会被向上夹成 `high`——历史 16 个会话全都记的是 high，就是这么来的。
+ */
+export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "low";
+
+/**
+ * 推理强度。不配就**默认 low**：实测 low 比 high 少约 18% 的思考 token、墙钟同步降约
+ * 18%，答案长度基本不变（[09-17 第 6 节](../docs/specs/09-17-pi-skill-runtime.md)）。
  *
- * 非法值**不静默生效**：这里当没配（回落到 pi 的缺省）并留一行 warn；部署时的
+ * 档位能不能落地取决于模型声明了什么：`deepseek-v4-flash` 有 low，`deepseek-v4-pro`
+ * 和目录外的 `deepseek-chat` 只有 high/max——传 low 会被 pi **向上夹到 high**，
+ * 不会报错。所以换模型之前调这个值是没有效果的。
+ *
+ * 非法值**不静默生效**：这里当没配（回落 low）并留一行 warn；部署时的
  * `scripts/preflight.mjs --env` 会直接判失败，所以拼错的东西到不了线上。
  */
 export function resolveThinkingLevel(
   env: Record<string, string | undefined> = process.env
-): ThinkingLevel | null {
+): ThinkingLevel {
   const value = (env.PI_THINKING_LEVEL ?? "").trim().toLowerCase();
-  if (!value) return null;
+  if (!value) return DEFAULT_THINKING_LEVEL;
   if ((THINKING_LEVELS as readonly string[]).includes(value)) return value as ThinkingLevel;
   console.warn(
-    `[pi] PI_THINKING_LEVEL="${value}" 不是合法档位（${THINKING_LEVELS.join(" / ")}），按未配置处理。`
+    `[pi] PI_THINKING_LEVEL="${value}" 不是合法档位（${THINKING_LEVELS.join(" / ")}），按缺省 ${DEFAULT_THINKING_LEVEL} 处理。`
   );
-  return null;
+  return DEFAULT_THINKING_LEVEL;
 }
 
 // pi 是项目依赖（@earendil-works/pi-coding-agent），二进制装在 node_modules/.bin；
@@ -193,7 +211,7 @@ export function buildPiArgs(options: PiBridgeOptions): string[] {
     "--tools", READ_ONLY_TOOL_ALLOWLIST,
     "--system-prompt", options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     "--provider", options.provider ?? process.env.PI_PROVIDER ?? "deepseek",
-    "--model", options.model ?? process.env.PI_MODEL ?? "deepseek-chat",
+    "--model", options.model ?? process.env.PI_MODEL ?? DEFAULT_MODEL,
     ...(thinking ? ["--thinking", thinking] : []),
     "-p", options.prompt
   ];
@@ -227,7 +245,7 @@ export async function runPiAgent(options: PiBridgeOptions, sink: PiEventSink): P
   // 前端据此提示用户，而不是让他以为前文还在。
   const sessionFile = sessionId ? await findSessionFile(cwd, sessionId, stateDir) : null;
   const provider = options.provider ?? process.env.PI_PROVIDER ?? "deepseek";
-  const model = options.model ?? process.env.PI_MODEL ?? "deepseek-chat";
+  const model = options.model ?? process.env.PI_MODEL ?? DEFAULT_MODEL;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const context: PiRunContext = {
     traceId,
