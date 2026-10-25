@@ -78,6 +78,15 @@ npm run dev            # http://localhost:3000
 
 关掉时整条链路安静降级：不发任何请求（连 `pending` 事件都不发），不出空骨架、假价格、假链接，答案正文里的机器可读块照常剥掉。
 
+生产环境可单独切换开关，无需重新构建或发布代码：
+
+```sh
+gh workflow run taobao-cards.yml --ref main -f enabled=true   # 开启
+gh workflow run taobao-cards.yml --ref main -f enabled=false  # 关闭
+```
+
+操作使用现有部署凭据，备份 shared `.env` 后只修改开关并重启服务；有请求正在运行时会中止，健康检查失败会恢复原配置。流程与正式发布共用锁，校验不会调用收费接口。
+
 ### Langfuse 观测（可选）
 
 全链路 trace：每个阶段的 input/output 与耗时。两个 key 都为空 = 完全不上报。

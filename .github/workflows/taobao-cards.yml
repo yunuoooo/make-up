@@ -1,0 +1,50 @@
+name: taobao-cards
+run-name: "淘宝推荐开关：${{ inputs.enabled }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      enabled:
+        description: 开启生产环境淘宝推荐（上游按次计费）
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+# 与正式发布串行，避免配置重启与发布换目录同时发生。
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      TAOBAO_CARDS_ENABLED: ${{ inputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 配置 SSH
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: 切换开关并检查服务
+        run: |
+          set -eu
+          case "$TAOBAO_CARDS_ENABLED" in true|false) ;; *) exit 2 ;; esac
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=10 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sh -s -- '$TAOBAO_CARDS_ENABLED'" < scripts/set-taobao-cards.sh
+      - name: 清理部署凭据
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
