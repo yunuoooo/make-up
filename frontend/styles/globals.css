@@ -21,6 +21,42 @@
   scrollbar-gutter: stable;
 }
 
+/* The same five-column recommendation table becomes readable cards on phones. */
+table[data-advisor-table] {
+  table-layout: fixed;
+  min-width: 860px;
+
+  th:nth-child(1) { width: 10%; }
+  th:nth-child(2) { width: 18%; }
+  th:nth-child(3) { width: 15%; }
+  th:nth-child(4) { width: 23%; }
+  th:nth-child(5) { width: 34%; }
+}
+
+.advisor-sources > div {
+  border-top: 1px solid rgb(0 0 0 / 6%);
+  padding: 0.25rem 1.25rem 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+@media (width < 640px) {
+  table[data-advisor-table] {
+    display: block;
+    min-width: 0;
+
+    thead { display: none; }
+    tbody { display: block; }
+    tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    td { display: block; padding: 0.75rem 1rem; overflow-wrap: anywhere; }
+    td::before { content: attr(data-label); display: block; margin-bottom: 0.35rem; font-size: 12px; color: #9b8b7d; }
+    td:first-child { grid-column: 1 / -1; background: #f9f7f4; font-weight: 600; color: #493a2e; }
+    td:first-child::before { display: none; }
+    td:nth-child(4), td:last-child { grid-column: 1 / -1; }
+    td:last-child { padding-bottom: 1.5rem; }
+    td:last-child::before { margin-bottom: 0.75rem; }
+  }
+}
+
 :root {
   --background: #f6f4f2;
   --foreground: #24211f;

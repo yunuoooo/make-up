@@ -21,7 +21,7 @@ export function ProductCardStrip({ state }: { state?: ProductCardsState }) {
   if (state.status === "unavailable" && state.items.length === 0) {
     return (
       <p className="mt-5 rounded-[16px] border border-black/[.07] bg-white px-4 py-3 text-[13px] leading-6 text-[#7d756f]">
-        淘宝商品信息暂不可用，可点表格里的商品名自行搜索。
+        淘宝商品信息暂不可用，可按表格里的商品名自行搜索。
       </p>
     );
   }
@@ -122,7 +122,7 @@ function ProductCardTile({ card }: { card: ProductCard }) {
         </span>
         {card.section === "optional" ? (
           <span className="absolute right-2.5 top-2.5 rounded-full bg-[#eeeae7]/95 px-2 py-0.5 text-[11px] text-[#706963]">
-            按需
+            可选
           </span>
         ) : null}
       </div>

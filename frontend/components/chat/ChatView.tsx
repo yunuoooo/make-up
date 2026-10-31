@@ -5,7 +5,6 @@ import { ArrowUp, LoaderCircle, Sparkles } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
 import { Textarea } from "@/frontend/components/ui/textarea";
 import { AdvisorMessage } from "@/frontend/components/chat/AdvisorMessage";
-import { ProductCardStrip } from "@/frontend/components/chat/ProductCardStrip";
 import { TurnTrace } from "@/frontend/components/chat/TurnTrace";
 import {
   DISCLAIMER,
@@ -75,8 +74,7 @@ export function ChatView({
                       />
                       {turn.text ? (
                         <div className="mt-3">
-                          <AdvisorMessage text={turn.text} />
-                          <ProductCardStrip state={turn.cards} />
+                          <AdvisorMessage text={turn.text} cards={turn.cards} />
                         </div>
                       ) : isSending && index === turns.length - 1 ? (
                         <div className="flex items-center gap-2 pt-3 text-sm text-[#77706a]">
