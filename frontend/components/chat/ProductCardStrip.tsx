@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink, ShoppingBag } from "lucide-react";
 import { Skeleton } from "@/frontend/components/ui/skeleton";
 import { cn } from "@/frontend/lib/utils";
+import { productCardStripView } from "@/frontend/lib/product-cards";
 import type { ProductCard, ProductCardsState } from "@/lib/commerce/types";
 
 /**
@@ -15,7 +16,9 @@ export function ProductCardStrip({ state }: { state?: ProductCardsState }) {
 
   if (!state || (state.expected === 0 && state.items.length === 0)) return null;
 
-  const pending = Math.max(0, state.expected - state.items.length);
+  const view = productCardStripView(state);
+  // 失败件不渲染：整批结束后标题只数真正拿到的卡片，避免「共 8 件」却只有 5 张。
+  const total = state.status === "pending" ? Math.max(state.expected, state.items.length) : state.items.length;
 
   // 全部失败时不留一条空卡片条，只说明情况——答案里的表格仍然可用。
   if (state.status === "unavailable" && state.items.length === 0) {
@@ -38,7 +41,7 @@ export function ProductCardStrip({ state }: { state?: ProductCardsState }) {
     <section className="mt-6" aria-label="可在淘宝购买的首选商品">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className="text-sm font-semibold text-[#312d2a]">
-          需要购买的首选 · {state.items.length || state.expected} 件
+          需要购买的首选 · 共 {total} 件
         </h3>
         <span className="text-[11px] text-[#a29c96]">图片与价格来自淘宝，以商品页为准</span>
       </div>
@@ -48,28 +51,21 @@ export function ProductCardStrip({ state }: { state?: ProductCardsState }) {
           ref={scrollerRef}
           className="scrollbar-thin flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
         >
-          {state.items.map((card) => (
+          {view.items.map((card) => (
             <ProductCardTile key={card.id} card={card} />
           ))}
-          {Array.from({ length: pending }).map((_, index) => (
-            <SkeletonTile key={`pending_${index}`} label={state.categories[state.items.length + index] ?? "商品"} />
+          {view.pendingLabels.map((label, index) => (
+            <SkeletonTile key={`pending_${index}`} label={label} />
           ))}
         </div>
 
-        {state.items.length + pending > 1 ? (
+        {view.items.length + view.pendingLabels.length > 1 ? (
           <>
             <ScrollButton side="left" onClick={() => scrollByCard(-1)} />
             <ScrollButton side="right" onClick={() => scrollByCard(1)} />
           </>
         ) : null}
       </div>
-
-      {state.status === "partial" ? (
-        <p className="mt-1 text-[11px] text-[#a29c96]">
-          其余 {Math.max(state.failed.length, pending)} 件暂时没取到淘宝信息
-          {state.failed.some((item) => item.reason.includes("额度")) ? "（本轮淘宝查询额度受限）" : ""}
-        </p>
-      ) : null}
     </section>
   );
 }

@@ -17,7 +17,12 @@ import type {
 
 export const DEFAULT_CARD_LIMIT = 8;
 export const DEFAULT_BUDGET_MS = 60_000;
-export const DEFAULT_CONCURRENCY = 2;
+/**
+ * 2 → 4（2026-11-02）。上游现在是 10–40s 一件，8 件商品两两串行时尾部必然撞 60s 预算：
+ * 实测两轮 8 件分别只补出 5 件和 3 件，其中 2 件是「超出本轮淘宝查询预算」。
+ * 并发 4 只影响同时在跑的请求数，总请求数、总费用不变；302 的降并发逻辑照旧生效。
+ */
+export const DEFAULT_CONCURRENCY = 4;
 /**
  * 命中 302（超出速率限制）后的退避时长。上游的限流窗口以分钟/小时计，退避只是让一次
  * 突发的并发撞上限制后能站起来，不是等窗口过去——所以它是「重试一次」而不是「等到成功」。
@@ -32,7 +37,11 @@ export function itemUrl(numIid: string): string {
 
 /** 搜索词 = 品牌 + 品名 + 色号，压空白、去首尾标点、限长。 */
 export function buildSearchKeyword(ref: ProductRef): string {
-  return [ref.brand, ref.name, ref.shade]
+  return composeKeyword([ref.brand, ref.name, ref.shade]);
+}
+
+function composeKeyword(parts: Array<string | undefined>): string {
+  return parts
     .filter((part): part is string => Boolean(part && part.trim()))
     .join(" ")
     .replace(/\s+/g, " ")
@@ -40,6 +49,62 @@ export function buildSearchKeyword(ref: ProductRef): string {
     .replace(/[\s，,。.、；;：:！!?？]+$/, "")
     .slice(0, 60)
     .trim();
+}
+
+/**
+ * 品牌里的拉丁部分：`MAC 魅可` → `MAC`，`Kiss Me 奇士美` → `Kiss Me`。
+ * 淘宝搜索结果标题通常只带其中一个写法；带上重复的中文别名反而更容易让采集失败
+ * （2026-11-02 实测：`MAC 魅可 唇线笔（Lip Pencil）` 两次 301，`MAC 唇线笔` 正常返回 47 条）。
+ * 纯中文品牌没有拉丁部分，返回 undefined，由调用方保留原品牌。
+ */
+function latinBrand(brand: string): string | undefined {
+  const tokens = brand.trim().split(/[\s/]+/).filter(Boolean);
+  const latin: string[] = [];
+  for (const token of tokens) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9.&'’+_-]*$/.test(token)) break;
+    latin.push(token);
+  }
+  return latin.length ? latin.join(" ") : undefined;
+}
+
+/**
+ * 搜索用的简化品名：去掉括号里的英文译名/补充说明，以及中文名尾部的一串英文。
+ * `亮采柔润遮瑕膏（Radiant Creamy Concealer）` → `亮采柔润遮瑕膏`；
+ * `花漾美姬 柔雾染眉膏 Heavy Rotation Coloring Eyebrow` → `花漾美姬 柔雾染眉膏`。
+ * 纯英文品名不会被清空——只有还剩下中文时才剪尾部的英文。
+ */
+function simplifyProductName(name: string): string {
+  let text = name.replace(/[（(【\[][^）)】\]]*[）)】\]]/g, " ");
+  if (/[㐀-鿿]/.test(text)) {
+    text = text.replace(/\s+[A-Za-z0-9][A-Za-z0-9 .&'’+_-]*$/, " ");
+  }
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * 301（采集失败）后的兜底搜索词。
+ *
+ * 上游的 301 是关键词相关的：同一个商品，带上重复的中文品牌别名或英文括号就容易
+ * 采集失败，换成「拉丁品牌 + 简化品名」通常能拿到结果（实测见消费方 spec 第 13 节）。
+ * 返回按优先级排好的候选：先简化品名，再退到品牌 + 品类；调用方逐个尝试。
+ * 与原搜索词相同或重复的候选会被去掉，所以纯中文、简单品名的商品通常没有兜底词。
+ */
+export function buildFallbackSearchKeywords(ref: ProductRef): string[] {
+  const brand = latinBrand(ref.brand) ?? ref.brand;
+  const name = simplifyProductName(ref.name);
+  const candidates = [
+    composeKeyword([brand, name]),
+    composeKeyword([brand, ref.category])
+  ];
+  const seen = new Set<string>([buildSearchKeyword(ref).toLowerCase()]);
+  const keywords: string[] = [];
+  for (const candidate of candidates) {
+    const key = candidate.toLowerCase();
+    if (!candidate || seen.has(key)) continue;
+    seen.add(key);
+    keywords.push(candidate);
+  }
+  return keywords;
 }
 
 /**
@@ -257,6 +322,41 @@ export async function buildProductCards(
     }
   };
 
+  /**
+   * 搜索；301（采集失败）时换简化关键词再试。
+   *
+   * 301 是关键词相关的：原词重试一次仍失败时，直接放弃会让这一件永远不出卡。
+   * 兜底词只换关键词、不换商品，失败的调用也不计费；预算不够时不再尝试，
+   * 避免为了救一件把后面的卡片饿死。兜底也失败就抛**原始** 301，失败原因不会被
+   * 兜底词的错误盖掉。
+   */
+  async function searchWithFallback(ref: ProductRef, key: string, keyword: string): Promise<TaobaoSearchItem[]> {
+    try {
+      return await withRetry(
+        () => options.client.searchItems(keyword, { page: 1, signal: options.signal, tag: key }),
+        retry
+      );
+    } catch (error) {
+      if (!(error instanceof TaobaoApiError) || error.code !== 301) throw error;
+      for (const fallback of buildFallbackSearchKeywords(ref)) {
+        if (retry.now() >= retry.deadline) break;
+        try {
+          return await withRetry(
+            () => options.client.searchItems(fallback, { page: 1, signal: options.signal, tag: key }),
+            retry
+          );
+        } catch (fallbackError) {
+          // 配额/凭据这类致命错必须整批停下，不能被「换关键词」吞掉。
+          if (isFatal(fallbackError)) throw fallbackError;
+          // 只有 301 才值得换下一个候选；其它失败（超时、5xx、302）不再换词，
+          // 按原始 301 记这一件的失败原因。
+          if (!(fallbackError instanceof TaobaoApiError) || fallbackError.code !== 301) break;
+        }
+      }
+      throw error;
+    }
+  }
+
   async function handle(ref: ProductRef): Promise<void> {
     const key = productKey(ref);
     const cached = options.cache?.get(key);
@@ -274,12 +374,9 @@ export async function buildProductCards(
       return;
     }
 
-    // tag 把这次调用归到发起它的那张卡片：并发是 2，观测层靠它才能把
+    // tag 把这次调用归到发起它的那张卡片：并发补全时，观测层靠它才能把
     // taobao.search / taobao.detail 挂到**所属**卡片之下，而不是整批之下。
-    const found = await withRetry(
-      () => options.client.searchItems(keyword, { page: 1, signal: options.signal, tag: key }),
-      retry
-    );
+    const found = await searchWithFallback(ref, key, keyword);
     const picked = pickSearchItem(found, ref.brand);
     if (!picked) {
       fail(ref, "淘宝没有搜到可用商品");
