@@ -192,7 +192,7 @@ export function parseProductSuggestions(value: string): ProductSuggestion[] {
           shade = part.replace(/^色号\s*[：:]?\s*/, "");
         } else if (!/^(?:不适用|不适用色号)$/.test(part)) notes.push(part);
       }
-      name = name.replace(/\s*色号待(?:试|定|确认)\s*$/, () => { shade = "色号待定"; return ""; });
+      name = name.replace(/\s*[（(]?\s*色号待(?:试|定|确认)[\s\S]*$/, () => { shade = "色号待定"; return ""; }).trim();
       if (status === "pending") {
         const conditions = ["肤色", "肤质", "发色", "眼型"].filter((key) => notes.some((note) => note.includes(key)));
         if (conditions.length && notes.some((note) => /待确认|需要先确认|取决于|需.*确认/.test(note))) {

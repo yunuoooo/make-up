@@ -44,7 +44,6 @@ function ProductSuggestions({ items }: { items: ProductSuggestion[] }) {
                     {item.alternative ? <span className="mr-2 text-xs font-normal text-[#817267]">可选</span> : null}
                     {item.name}{item.shade ? <span className="ml-1.5 font-normal text-[#817267]">· {item.shade}</span> : null}
                   </p>
-                  {item.notes.length ? <p className="mt-1.5 text-sm leading-6 text-[#80776e]">{item.notes.join("；")}</p> : null}
                 </div>
               ))}
             </div>
@@ -58,10 +57,9 @@ function ProductSuggestions({ items }: { items: ProductSuggestion[] }) {
 function TableCell({ children, isProductCell, ...props }: React.ComponentProps<"td"> & { isProductCell: boolean }) {
   const plain = flatten(children);
   const items = isProductCell ? parseProductSuggestions(plain) : [];
-  const introduction = items.length ? plain.split(/[✅💰❔❓]/u)[0].trim() : "";
   return (
     <td className="px-4 py-5 text-[14px] leading-7 text-[#686057]" {...props}>
-      {items.length ? <>{introduction ? <p className="mb-4">{introduction}</p> : null}<ProductSuggestions items={items} /></> : children}
+      {items.length ? <ProductSuggestions items={items} /> : children}
     </td>
   );
 }
@@ -92,21 +90,21 @@ function ReferenceImage({ src, alt }: { src?: string; alt?: string }) {
 function ExecutionStep({ children, index }: { children: ReactNode; index: number }) {
   const step = parseExecutionStep(flatten(children), index);
   return (
-    <li className="rounded-[20px] border border-black/[.065] bg-white p-5 sm:p-6" data-execution-step={index}>
-      <div className="mb-4 flex items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#f8e9ed] text-sm font-semibold text-[#a04e67]">
-          {String(index).padStart(2, "0")}
-        </span>
-        <h4 className="text-base font-semibold text-[#3b322b]">{step.title}</h4>
+    <li className="flex items-start gap-3 sm:gap-4" data-execution-step={index}>
+      <span className="mt-4 grid size-9 shrink-0 place-items-center rounded-full bg-[#f3dce5] text-sm font-semibold text-[#91445e]">
+        {String(index).padStart(2, "0")}
+      </span>
+      <div className="min-w-0 flex-1 rounded-[20px] border border-black/[.065] bg-white p-5 sm:px-6">
+        <h4 className="mb-3 text-base font-semibold text-[#3b322b]">{step.title}</h4>
+        <ul className="space-y-2">
+          {step.actions.map((action, i) => (
+            <li key={i} className="flex gap-2.5 text-base leading-7 text-[#6c6157]">
+              <span className="mt-3 size-1 shrink-0 rounded-full bg-[#c4ada4]" aria-hidden="true" />
+              <span>{action}</span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="space-y-2.5">
-        {step.actions.map((action, i) => (
-          <li key={i} className="flex gap-2.5 text-base leading-7 text-[#6c6157]">
-            <span className="mt-3 size-1 shrink-0 rounded-full bg-[#c4ada4]" aria-hidden="true" />
-            <span>{action}</span>
-          </li>
-        ))}
-      </ul>
     </li>
   );
 }
@@ -122,8 +120,16 @@ export const AdvisorMessage = memo(function AdvisorMessage({ text, cards }: { te
           h2: ({ children, node }) => {
             const kind = node?.properties?.["data-advisor-section"];
             return (
-              <h3 className="mb-4 mt-10 flex items-center gap-3 text-lg font-semibold tracking-[-.02em] text-[#3d322b]">
-                {kind ? <span aria-hidden="true" className={cn("h-5 w-1 rounded-full", kind === "optional" ? "bg-[#c6bcb2]" : "bg-[#c7879a]")} /> : null}
+              <h3
+                data-advisor-section={kind}
+                className={cn(
+                  "mb-4 mt-10 text-lg font-semibold tracking-[-.02em] text-[#3d322b]",
+                  kind && "rounded-2xl border px-5 py-3.5",
+                  kind === "core" && "border-[#ecd0db] bg-[#f6e1e9] text-[#7d4155]",
+                  kind === "optional" && "border-[#e2d8cc] bg-[#eee7df] text-[#6d5d4c]",
+                  kind === "steps" && "border-[#e8d6cb] bg-[#f3e5dd] text-[#785541]"
+                )}
+              >
                 {children}
               </h3>
             );
@@ -159,7 +165,7 @@ export const AdvisorMessage = memo(function AdvisorMessage({ text, cards }: { te
           tbody: ({ children }) => <tbody className="[&_tr:last-child]:border-0">{children}</tbody>,
           tr: ({ children }) => <tr className="border-b border-black/[.065] align-top">{children}</tr>,
           td: ({ children, node, ...props }) => <TableCell {...props} isProductCell={Boolean(node?.properties?.["data-advisor-products"])}>{children}</TableCell>,
-          ol: ({ children, node, start }) => <ol start={start} className={node?.properties?.["data-advisor-steps"] ? "my-5 grid gap-4 sm:grid-cols-2" : "mt-4 list-decimal space-y-3 pl-5 text-[15px] leading-7 text-[#6b6057]"}>{children}</ol>,
+          ol: ({ children, node, start }) => <ol start={start} className={node?.properties?.["data-advisor-steps"] ? "my-5 flex flex-col gap-4" : "mt-4 list-decimal space-y-3 pl-5 text-[15px] leading-7 text-[#6b6057]"}>{children}</ol>,
           ul: ({ children }) => <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px] leading-7 text-[#6b6057]">{children}</ul>,
           li: ({ children, node }) => {
             const step = node?.properties?.["data-advisor-step"];

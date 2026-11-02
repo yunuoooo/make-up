@@ -69,6 +69,16 @@ test("步骤拆分不丢动作，没有标题时不编造部位", () => {
   assert.deepEqual(parseExecutionStep("先夹睫毛 → 再刷睫毛膏", 2), { title: "步骤 2", actions: ["先夹睫毛", "再刷睫毛膏"] });
 });
 
+test("色号待定后夹带的色系与试色说明不混进产品身份", () => {
+  for (const suffix of ["色号待试：暖调 NC 系，按颈部试色", "（色号待定，NC15–NC35 区间）", "色号待确认：根据肤色分析"]) {
+    const [item] = parseProductSuggestions(`💰 MAC 魅可 定制无瑕粉底液 ${suffix}`);
+    assert.equal(item.name, "MAC 魅可 定制无瑕粉底液");
+    assert.equal(item.shade, "色号待定");
+  }
+  const [known] = parseProductSuggestions("✅ KATE 造型眉粉饼 EX-5");
+  assert.equal(known.name, "KATE 造型眉粉饼 EX-5");
+});
+
 test("关键失败说明仍可见，普通段落、表格和代码不按研究报告隐藏", () => {
   const html = render("## 妆匣核对结果\n\n妆匣读取失败，本次没有核对成功。\n\n## 核心特点与选品解析\n\n没有实时站内检索。\n\n| 项目 | 说明 |\n| --- | --- |\n| 测试 | 数据 |\n\n```text\n## 视频提及但未采用\n```\n\n<script>alert('x')</script>");
   assert.match(html, /妆匣暂未核对，以下产品为候选建议/);
