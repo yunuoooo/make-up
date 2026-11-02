@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isRuntimeAnswer, type RuntimeAnswer } from "../../frontend/lib/types.ts";
-import { mergeProductCards } from "../../frontend/lib/product-cards.ts";
+import { mergeProductCards, productCardStripView } from "../../frontend/lib/product-cards.ts";
 import type { ProductCard } from "../../lib/commerce/types.ts";
 
 test("runtime answers are recognized without being treated as domain AgentAnswer", () => {
@@ -67,4 +67,42 @@ test("商品卡片事件按 id 合并、渐进追加", () => {
     failed: [{ brand: "MAC", name: "子弹头口红", reason: "淘宝没有搜到可用商品" }]
   });
   assert.equal(again.failed.length, 1);
+});
+
+test("卡片条视图：已到卡片按清单顺序排，骨架只属于还没到的品类", () => {
+  const pending = mergeProductCards(undefined, {
+    phase: "pending",
+    expected: 3,
+    categories: ["粉底液", "遮瑕", "唇妆"]
+  });
+  // 到达顺序与清单顺序相反：视图要按 categories 排回来。
+  const both = mergeProductCards(pending, {
+    phase: "items",
+    items: [card("lip", { category: "唇妆" }), card("base", { category: "粉底液" })]
+  });
+
+  const view = productCardStripView(both);
+  assert.deepEqual(view.items.map((item) => item.id), ["base", "lip"]);
+  assert.deepEqual(view.pendingLabels, ["遮瑕"], "已到的品类不能再出骨架");
+});
+
+test("卡片条视图：done 之后不再返回骨架，失败件整件不渲染", () => {
+  const pending = mergeProductCards(undefined, {
+    phase: "pending",
+    expected: 3,
+    categories: ["粉底液", "遮瑕", "唇妆"]
+  });
+  const first = mergeProductCards(pending, { phase: "items", items: [card("base", { category: "粉底液" })] });
+  const done = mergeProductCards(first, {
+    phase: "done",
+    status: "partial",
+    failed: [
+      { brand: "NARS", name: "遮瑕膏", reason: "淘宝接口失败 code=301" },
+      { brand: "MAC", name: "唇线笔", reason: "淘宝接口失败 code=301" }
+    ]
+  });
+
+  const view = productCardStripView(done);
+  assert.deepEqual(view.pendingLabels, [], "整批结束后骨架必须清空，否则永远停在「正在取」");
+  assert.equal(view.items.length, 1, "失败件不占卡片位，只保留真正拿到的卡片");
 });

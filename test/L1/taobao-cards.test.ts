@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  buildFallbackSearchKeywords,
   buildProductCards,
   buildSearchKeyword,
   itemUrl,
@@ -497,6 +498,73 @@ test("302 之后本轮降并发：剩下的商品一件一件查", async () => {
   assert.equal(maxInFlightAfterRateLimit, 1, "限流之后同时在跑的上游调用不该超过 1 条");
 });
 
+test("301 兜底关键词：拉丁品牌 + 去括号/尾部英文，再退到品牌 + 品类", () => {
+  assert.deepEqual(
+    buildFallbackSearchKeywords({ category: "唇线笔", brand: "MAC 魅可", name: "唇线笔（Lip Pencil）", section: "necessary" }),
+    ["MAC 唇线笔"],
+    "中文品牌别名和英文括号都去掉；品牌 + 品类与简化品名相同，不重复"
+  );
+  assert.deepEqual(
+    buildFallbackSearchKeywords({
+      category: "遮瑕",
+      brand: "NARS",
+      name: "亮采柔润遮瑕膏（Radiant Creamy Concealer）",
+      section: "necessary"
+    }),
+    ["NARS 亮采柔润遮瑕膏", "NARS 遮瑕"]
+  );
+  assert.deepEqual(
+    buildFallbackSearchKeywords({ category: "腮红", brand: "花知晓", name: "液体腮红", section: "necessary" }),
+    ["花知晓 腮红"],
+    "纯中文品牌保留原名；主搜索词与简化词相同，只留品牌 + 品类"
+  );
+});
+
+test("301 采集失败：换简化关键词能救回卡片", async () => {
+  const { search, detail } = await fixtures();
+  const target: ProductRef = { category: "唇线笔", brand: "MAC 魅可", name: "唇线笔（Lip Pencil）", section: "necessary" };
+  const keywords: string[] = [];
+  const { fetchImpl } = stubFetch({
+    search: (url) => {
+      const keyword = url.searchParams.get("keyword") ?? "";
+      keywords.push(keyword);
+      return keyword === "MAC 魅可 唇线笔（Lip Pencil）"
+        ? { body: { code: 301, message: "COLLECT FAILED, SEND REQUEST AGAIN", requestId: "req_301", data: null } }
+        : { body: search };
+    },
+    detail: () => ({ body: detail })
+  });
+
+  const outcome = await buildProductCards([target], { client: createTaobaoClient({ fetchImpl, env }) });
+
+  assert.equal(outcome.cards.length, 1);
+  assert.equal(outcome.status, "ok");
+  assert.equal(outcome.cards[0].detailLevel, "detail");
+  assert.deepEqual(keywords, [
+    "MAC 魅可 唇线笔（Lip Pencil）",
+    "MAC 魅可 唇线笔（Lip Pencil）",
+    "MAC 唇线笔"
+  ], "原词重试一次 → 简化词；简化词成功就不再多打");
+});
+
+test("301 兜底也失败：按原始 301 记失败，不吞掉真实原因", async () => {
+  const target: ProductRef = { category: "唇线笔", brand: "MAC 魅可", name: "唇线笔（Lip Pencil）", section: "necessary" };
+  let calls = 0;
+  const { fetchImpl } = stubFetch({
+    search: () => {
+      calls += 1;
+      return { body: { code: 301, message: "COLLECT FAILED, SEND REQUEST AGAIN", requestId: "req_301", data: null } };
+    }
+  });
+
+  const outcome = await buildProductCards([target], { client: createTaobaoClient({ fetchImpl, env }) });
+
+  assert.equal(outcome.cards.length, 0);
+  assert.equal(outcome.status, "unavailable");
+  assert.match(outcome.failed[0].reason, /code=301/);
+  assert.equal(calls, 4, "主关键词 2 次 + 唯一的简化关键词 2 次，不重复打同一个词");
+});
+
 test("总预算：超预算的商品不再发请求", async () => {
   const { search } = await fixtures();
   const refs: ProductRef[] = [ref, { category: "唇妆", brand: "MAC", name: "子弹头口红", section: "necessary" }];
@@ -551,7 +619,7 @@ test("缓存命中不发请求", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("并发不超过 2", async () => {
+test("并发默认 4，别把上游当无限资源", async () => {
   const { search } = await fixtures();
   const refs: ProductRef[] = Array.from({ length: 4 }, (_, index) => ({ ...ref, name: `腮红${index}` }));
   let inFlight = 0;
@@ -574,7 +642,7 @@ test("并发不超过 2", async () => {
   });
 
   assert.equal(outcome.cards.length, 4);
-  assert.equal(maxInFlight, 2, "并发上限是 2，别把上游当无限资源");
+  assert.equal(maxInFlight, 4, "默认并发是 4：上游单件 10–40s，2 个 worker 会让 8 件的尾部撞预算");
 });
 
 test("条数上限：超出的商品不处理", async () => {

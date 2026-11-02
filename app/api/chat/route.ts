@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { randomUUID } from "node:crypto";
 import { formatSseEvent, resolvePiStateDir, runPiAgent } from "@/lib/pi/bridge";
 import { redactSensitive, type AppSseEvent } from "@/lib/pi/events";
-import { buildProductCards } from "@/lib/commerce/cards";
+import { buildProductCards, DEFAULT_CONCURRENCY } from "@/lib/commerce/cards";
 import { extractProductBlock, productKey } from "@/lib/commerce/product-block";
 import { createTaobaoClient } from "@/lib/commerce/taobao";
 import { loadProductCardsCache } from "@/lib/storage/taobao-cache";
@@ -66,6 +66,7 @@ async function attachProductCards(
   const outcome = await buildProductCards(items, {
     client,
     limit,
+    concurrency: Math.floor(positiveNumber("TAOBAO_CARDS_CONCURRENCY", DEFAULT_CONCURRENCY)),
     budgetMs: positiveNumber("TAOBAO_CARDS_BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS) * 1000,
     signal,
     ...(cache ? { cache } : {}),

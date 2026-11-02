@@ -1,4 +1,4 @@
-import type { ProductCardFailure, ProductCardsEvent, ProductCardsState } from "@/lib/commerce/types";
+import type { ProductCard, ProductCardFailure, ProductCardsEvent, ProductCardsState } from "@/lib/commerce/types";
 
 /**
  * 把渐进式的 product_cards 事件合并成 turn 上的卡片状态。
@@ -53,5 +53,51 @@ export function mergeProductCards(
     status: event.status ?? (base.items.length ? "ok" : "unavailable"),
     expected: Math.max(base.expected, base.items.length),
     failed: mergeFailures(base.failed, event.failed)
+  };
+}
+
+export type ProductCardStripView = {
+  /** 已到卡片，按商品清单的品类顺序排好。 */
+  items: ProductCard[];
+  /** 仍在取、需要骨架卡的品类；只在 status === "pending" 时有值。 */
+  pendingLabels: string[];
+};
+
+/**
+ * 卡片条的渲染视图：排序 + 骨架。
+ *
+ * 两个线上真实问题都收在这里，组件只负责画：
+ *
+ * 1. **done 之后绝不能再出骨架**。失败件不会再有 `items` 事件，靠
+ *    `expected - items.length` 算出来的骨架会永远停在「正在取…」，看起来像卡片没加载完。
+ *    失败件整件不渲染：这是展示取舍，失败原因留在 state.failed 与观测里，不占卡片位。
+ * 2. 已到卡片按 `categories` 的顺序排，而不是按到达顺序。并发补全时到达顺序是乱的，
+ *    按到达顺序排会让卡片条和答案里的表格对不上。
+ */
+export function productCardStripView(state: ProductCardsState): ProductCardStripView {
+  const order = new Map<string, number>();
+  state.categories.forEach((category, index) => {
+    if (!order.has(category)) order.set(category, index);
+  });
+  const items = state.items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const left = order.get(a.item.category) ?? Number.MAX_SAFE_INTEGER;
+      const right = order.get(b.item.category) ?? Number.MAX_SAFE_INTEGER;
+      return left - right || a.index - b.index;
+    })
+    .map(({ item }) => item);
+
+  if (state.status !== "pending") {
+    return { items, pendingLabels: [] };
+  }
+
+  const remaining = state.categories.filter(
+    (category) => !state.items.some((item) => item.category === category)
+  );
+  const pending = Math.max(0, state.expected - state.items.length);
+  return {
+    items,
+    pendingLabels: Array.from({ length: pending }, (_, index) => remaining[index] ?? "商品")
   };
 }
